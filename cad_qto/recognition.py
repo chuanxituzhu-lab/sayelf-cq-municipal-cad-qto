@@ -48,4 +48,3 @@ def recognize_candidates(document: DxfDocument, source_manifest: dict[str, Any])
         "candidates": candidates,
         "unmatched_layers": [layer["layer"] for layer in inventory["layers"] if not classify_layer(layer["layer"])],
     }
-
