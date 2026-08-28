@@ -243,6 +243,7 @@ function bind() {
   document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
   document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.go)));
   $("#fileInput").addEventListener("change", (event) => { state.selectedFiles = [...event.target.files]; renderSelectedFiles(); });
+  $("#fileDropzone").addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); $("#fileInput").click(); } });
   $("#fileEntryForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await uploadSelectedFiles(); } catch (error) { message("#fileMessage", error.message, true); } });
   $("#inspectUploadedBtn").addEventListener("click", async () => { try { await inspectUploadedFiles("#batchInspectionResult"); } catch (error) { message("#fileMessage", error.message, true); } });
   $("#inspectUploadedBtn2").addEventListener("click", async () => { try { await inspectUploadedFiles("#batchInspectionResult2"); } catch (error) { message("#inspectMessage", error.message, true); } });

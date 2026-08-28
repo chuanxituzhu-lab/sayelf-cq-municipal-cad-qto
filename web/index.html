@@ -35,7 +35,11 @@
           <section class="panel file-entry-panel">
             <div class="panel-head"><div><span class="eyebrow">Input / Local files</span><h3>录入施工图文件</h3></div><span class="state-chip">单选 / 多选</span></div>
             <form id="fileEntryForm">
-              <label class="file-picker"><span>选择项目 DXF 文件</span><input id="fileInput" name="files" type="file" accept=".dxf" multiple required><small>当前只接受 ASCII DXF；可一次选择 1 个或多个文件，文件会保存到本项目 data/cad_inputs/。</small></label>
+              <div class="file-picker">
+                <label class="file-dropzone" id="fileDropzone" for="fileInput" tabindex="0" role="button"><span class="drop-icon" aria-hidden="true">＋</span><span class="drop-copy"><strong>选择或拖入项目 DXF 文件</strong><small>支持单选 / 多选；当前只接受 ASCII DXF</small></span><span class="file-choose">选择文件</span></label>
+                <input class="file-input" id="fileInput" name="files" type="file" accept=".dxf" multiple required>
+                <small class="file-helper">文件会保存到本项目 <code>data/cad_inputs/</code>，录入后可逐张检查或批量检查。</small>
+              </div>
               <div id="selectedFiles" class="file-list"><span class="muted">尚未选择文件。</span></div>
               <div class="button-row"><button class="primary" type="submit">录入并检查 <span>→</span></button><button class="outline" id="inspectUploadedBtn" type="button">批量检查已录入文件</button></div>
             </form>
