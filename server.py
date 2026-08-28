@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from cad_qto.canonical import canonicalize_dxf, sha256_file
-from cad_qto.conversion import ConversionError, SUPPORTED_INPUT_EXTENSIONS, convert_to_dxf
+from cad_qto.conversion import ConversionError, SUPPORTED_INPUT_EXTENSIONS, convert_to_dxf, dwg_converter_status
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf
 from cad_qto.export import ExportError, export_pdf, export_xlsx
 from cad_qto.job import QtoJobError, run_job
@@ -34,6 +34,7 @@ PROJECT_ID = os.environ.get("MUNICIPAL_QTO_PROJECT_ID", "CQ-MUNICIPAL-CAD-QTO").
 PROJECT_NAME = os.environ.get("MUNICIPAL_QTO_PROJECT_NAME", "重庆市政 CAD 工程量计算（造价算量）").strip() or "重庆市政 CAD 工程量计算（造价算量）"
 REVIEWER_ID = os.environ.get("MUNICIPAL_QTO_REVIEWER_ID", "").strip() or None
 JOB_LOCK = threading.RLock()
+SERVER_VERSION = "0.4.2"
 
 
 def now_iso() -> str:
@@ -51,10 +52,11 @@ def project_info() -> dict[str, str]:
 def capabilities() -> dict:
     return {
         "server": "municipal-cad-qto",
-        "version": "0.4.0",
+        "version": SERVER_VERSION,
         "input_formats": ["ASCII DXF（默认）", "PDF（本地矢量转 DXF）", "DWG（本地转换器转 DXF）"],
         "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf", ".pdf", ".dwg"], "default_extension": ".dxf"},
-        "conversion": {"local_only": True, "target_format": ".dxf", "pdf_method": "PyMuPDF 矢量图元提取", "dwg_method": "本机 ODA File Converter / ezdxf odafc", "scan_pdf_auto_ocr": False},
+        "conversion": {"local_only": True, "target_format": ".dxf", "pdf_method": "PyMuPDF 矢量图元提取", "dwg_method": "本机 ODA File Converter 命令行", "scan_pdf_auto_ocr": False},
+        "dwg_converter": dwg_converter_status(),
         "exports": [{"format": "xlsx", "label": "Excel 工程量成果"}, {"format": "pdf", "label": "PDF 工程量成果"}],
         "canonical_output": "ASCII DXF（保守实体子集）",
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
@@ -183,7 +185,7 @@ def list_input_files() -> list[dict]:
                 "original_sha256": sha256_file(source),
                 "source_sha256": sha256_file(source_for_calculation) if converted_exists else sha256_file(source),
                 "conversion_status": "NOT_NEEDED" if source.suffix.lower() == ".dxf" else ("CONVERTED" if converted_exists else "FAILED"),
-                "conversion_method": "identity" if source.suffix.lower() == ".dxf" else (("local-pymupdf-vector-extraction" if source.suffix.lower() == ".pdf" else "local-ezdxf-odafc") if converted_exists else "unavailable"),
+                "conversion_method": "identity" if source.suffix.lower() == ".dxf" else (("local-pymupdf-vector-extraction" if source.suffix.lower() == ".pdf" else "local-oda-cli") if converted_exists else "unavailable"),
                 "created_at": datetime.fromtimestamp(source.stat().st_mtime).isoformat(timespec="seconds"),
             })
         except OSError:
@@ -351,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(json.loads(result_path.read_text(encoding="utf-8")))
             return
         if path == "/api/healthz":
-            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": "0.4.0"})
+            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": SERVER_VERSION})
             return
         self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
 
@@ -402,7 +404,7 @@ class Handler(BaseHTTPRequestHandler):
     def upload_cad_files(self) -> None:
         CAD_INPUTS.mkdir(parents=True, exist_ok=True)
         stored: list[dict[str, Any]] = []
-        created_paths: list[Path] = []
+        created_conversion_paths: list[Path] = []
         try:
             for original_name, payload in self.read_uploads():
                 filename = Path(original_name).name
@@ -415,10 +417,9 @@ class Handler(BaseHTTPRequestHandler):
                 token = uuid.uuid4().hex[:10]
                 original_target = CAD_INPUTS / f"{token}-{safe_name}{extension}"
                 original_target.write_bytes(payload)
-                created_paths.append(original_target)
                 converted_target = original_target if extension == ".dxf" else CAD_INPUTS / f"{token}-{safe_name}.converted.dxf"
                 if extension != ".dxf":
-                    created_paths.append(converted_target)
+                    created_conversion_paths.append(converted_target)
                 conversion = convert_to_dxf(original_target, converted_target if extension != ".dxf" else None)
                 calculation_source = converted_target if extension != ".dxf" else original_target
                 inspection = inspect_dxf(calculation_source)
@@ -437,7 +438,8 @@ class Handler(BaseHTTPRequestHandler):
                     "status": inspection["status"],
                 })
         except Exception:
-            for path in created_paths:
+            # Keep the uploaded original for a later retry; remove only an incomplete conversion output.
+            for path in created_conversion_paths:
                 path.unlink(missing_ok=True)
             raise
         self.send_json({"ok": True, "files": stored, "data_classification": "PRIVATE_PROJECT_DATA"}, HTTPStatus.CREATED)
@@ -449,7 +451,7 @@ class Handler(BaseHTTPRequestHandler):
         original = next((source.with_name(f"{stem}{extension}") for extension in (".pdf", ".dwg") if source.with_name(f"{stem}{extension}").exists()), None)
         if original is None:
             return {"converted_file": path_label(source), "conversion_status": "CONVERTED", "conversion_method": "local", "conversion_warnings": ["未找到转换前原文件，建议人工检查本地文件留存"]}
-        method = "local-pymupdf-vector-extraction" if original.suffix.lower() == ".pdf" else "local-ezdxf-odafc"
+        method = "local-pymupdf-vector-extraction" if original.suffix.lower() == ".pdf" else "local-oda-cli"
         return {"original_file": path_label(original), "original_sha256": sha256_file(original), "converted_file": path_label(source), "conversion_status": "CONVERTED", "conversion_method": method, "conversion_warnings": []}
 
     def create_cad_jobs(self, body: dict) -> None:

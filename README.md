@@ -20,7 +20,7 @@
   → 独立下载 Excel / PDF 成果
 ```
 
-默认输入为项目内 ASCII DXF，支持 `LINE`、`LWPOLYLINE`、`TEXT`、`MTEXT`。文件入口支持单选或多选；PDF 使用本地 PyMuPDF 提取矢量图元生成 DXF，DWG 使用本机 ODA File Converter / ezdxf odafc（未安装则明确失败）。原始文件与转换 DXF 均保留，并记录双 SHA-256。单个文件逐一形成独立作业；批量检查不会把不同文件混成一个算量结果。
+默认输入为项目内 ASCII DXF，支持 `LINE`、`LWPOLYLINE`、`TEXT`、`MTEXT`。文件入口支持单选或多选；PDF 使用本地 PyMuPDF 提取矢量图元生成 DXF，DWG 直接调用本机 ODA File Converter 命令行（未安装或执行失败则明确报告原因）。原始文件与转换 DXF 均保留，并记录双 SHA-256。单个文件逐一形成独立作业；批量检查不会把不同文件混成一个算量结果。
 
 ## 当前算量范围
 
@@ -69,6 +69,23 @@ WebUI 的上传文件与转换副本只保存到当前仓库的 `data/cad_inputs
 挡护参数：fixtures/cq_retaining_demo.json 中的 sections
 道路/管网参数：见 WebUI 自动填入的示例，可替换为人工确认值
 ```
+
+### Windows 安装（含 DWG 转换依赖）
+
+在其他 Windows 电脑部署本工具时，运行仓库内安装引导。缺少 ODA File Converter 时，引导会从 [ODA 官方下载页](https://www.opendesign.com/GUESTFILES/ODA_FILE_CONVERTER) 获取固定版本，校验 MSI 的 SHA-256 与 Open Design Alliance 数字签名，再提取到 D 盘并配置 `MUNICIPAL_QTO_DWG_CONVERTER`：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\scripts\setup_windows.ps1 -AcceptOdaTerms
+```
+
+`-AcceptOdaTerms` 只应在已阅读并接受 ODA 使用条款后使用；商业分发前需取得相应授权。没有 D 盘时，脚本自动使用当前用户的本地应用目录。无网络时可使用已取得的本地 MSI：
+
+```powershell
+.\scripts\setup_windows.ps1 -AcceptOdaTerms -OdaMsiPath "D:\安装包\ODAFileConverter.msi"
+```
+
+脚本只负责本机安装和配置，不把 ODA 二进制放入本仓库，也不上传 DWG。检查现有安装而不执行下载可运行 `.\scripts\setup_windows.ps1 -CheckOnly`。
 
 ## 本地 CLI
 

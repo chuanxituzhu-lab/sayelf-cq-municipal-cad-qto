@@ -20,7 +20,7 @@ if str(_default_root) not in sys.path:
     sys.path.insert(0, str(_default_root))
 
 from cad_qto.canonical import canonicalize_dxf, sha256_file  # noqa: E402
-from cad_qto.conversion import ConversionError, convert_to_dxf  # noqa: E402
+from cad_qto.conversion import ConversionError, convert_to_dxf, dwg_converter_status  # noqa: E402
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf  # noqa: E402
 from cad_qto.export import ExportError, export_pdf, export_xlsx  # noqa: E402
 from cad_qto.job import QtoJobError, run_job  # noqa: E402
@@ -28,10 +28,10 @@ from cad_qto.review import ReviewInputError, record_job_review, write_job_atomic
 
 
 SERVER_NAME = "municipal-cad-qto"
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.4.2"
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INSTRUCTIONS = (
-    "这是本地优先的重庆市政 CAD 工程量辅助工具，覆盖道路、管网和挡护三类几何算量。默认使用 DXF，PDF/DWG 只通过本地转换器生成 DXF；"
+    "这是本地优先的重庆市政 CAD 工程量辅助工具，覆盖道路、管网和挡护三类几何算量。默认使用 DXF，PDF/DWG 只通过本地转换器生成 DXF；DWG 优先直接调用 ODA File Converter 命令行；"
     "图层识别是 Hypothesis，公式计算是 Inference，必须人工审核后才能成为 Fact。"
     "不得覆盖原图、不得越权读取项目目录外文件、不得上传真实工程资料。"
     "复核工具必须明确 confirm=true；未配置本地审核身份时只能记录待授权状态。成果导出只写入项目私有目录。"
@@ -124,6 +124,7 @@ def _capabilities() -> dict[str, Any]:
         "input_formats": ["ASCII DXF（默认）", "PDF（本地矢量转 DXF）", "DWG（本地转换器转 DXF）"],
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
         "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf", ".pdf", ".dwg"], "default_extension": ".dxf"},
+        "dwg_converter": dwg_converter_status(),
         "exports": ["xlsx", "pdf"],
         "disciplines": ["road", "network", "retaining"],
         "rule_pack_versions": ["cq-municipal-road-v0.1", "cq-municipal-network-v0.1", "cq-municipal-retaining-v0.1"],

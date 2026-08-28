@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -8,6 +9,7 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import server as app_server
 
@@ -110,6 +112,36 @@ class MunicipalQtoTests(unittest.TestCase):
                 convert_to_dxf(fake_dwg, root / "drawing.dxf")
             self.assertTrue("DWG" in str(dwg_error.exception) or "dwg" in str(dwg_error.exception))
 
+    def test_dwg_uses_oda_cli_without_ezdxf_import_and_reports_missing_converter(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "南山挡墙.dwg"
+            source.write_bytes(b"AC1021" + b"local-dwg-fixture")
+            missing_output = root / "missing.dxf"
+            with patch("cad_qto.conversion._find_oda_converter", return_value=None):
+                with self.assertRaises(ConversionError) as missing_error:
+                    convert_to_dxf(source, missing_output)
+            self.assertIn("DWG 文件已收到", str(missing_error.exception))
+            self.assertIn("AC1021", str(missing_error.exception))
+            self.assertNotIn("未上传 DWG", str(missing_error.exception))
+
+            fake_converter = root / "ODAFileConverter.exe"
+            fake_converter.write_bytes(b"test placeholder")
+
+            def fake_oda(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+                output_dir = Path(command[2])
+                (output_dir / "南山挡墙.dxf").write_bytes(FIXTURE.read_bytes())
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch("cad_qto.conversion._find_oda_converter", return_value=fake_converter), patch(
+                "cad_qto.conversion.subprocess.run", side_effect=fake_oda
+            ) as run:
+                manifest = convert_to_dxf(source, root / "converted.dxf")
+            self.assertEqual(manifest["method"], "local-oda-cli")
+            self.assertEqual(parse_ascii_dxf(root / "converted.dxf").units_code, "6")
+            command = run.call_args.args[0]
+            self.assertEqual(command[3:7], ["ACAD2018", "DXF", "0", "1"])
+
     def test_review_requires_all_checks_and_explicit_confirmation(self) -> None:
         payload = json.loads(INPUT.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as folder:
@@ -177,6 +209,26 @@ class MunicipalQtoTests(unittest.TestCase):
                 with urllib.request.urlopen(f"{base}/api/cad/files") as response:
                     listed_files = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(len(listed_files["files"]), 2)
+
+                dwg_boundary = "----sayelf-cad-qto-dwg"
+                dwg_body = (
+                    f"--{dwg_boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"南山挡墙.dwg\"\r\n"
+                    f"Content-Type: application/acad\r\n\r\n".encode("utf-8")
+                    + b"AC1021" + b"local-dwg-fixture"
+                    + f"\r\n--{dwg_boundary}--\r\n".encode("utf-8")
+                )
+                dwg_request = urllib.request.Request(
+                    f"{base}/api/cad/files",
+                    data=dwg_body,
+                    headers={"Content-Type": f"multipart/form-data; boundary={dwg_boundary}"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as dwg_upload:
+                    urllib.request.urlopen(dwg_request)
+                self.assertEqual(dwg_upload.exception.code, 400)
+                self.assertIn("DWG 文件已收到", dwg_upload.exception.read().decode("utf-8"))
+                self.assertEqual(len(list(app_server.CAD_INPUTS.glob("*.dwg"))), 1)
+                self.assertEqual(len(list(app_server.CAD_INPUTS.glob("*.converted.dxf"))), 0)
 
                 inspect_batch_request = urllib.request.Request(f"{base}/api/cad/inspect-batch", data=json.dumps({"source_files": ["fixtures/cq_retaining_demo.dxf", "fixtures/cq_retaining_demo.dxf"]}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(inspect_batch_request) as response:

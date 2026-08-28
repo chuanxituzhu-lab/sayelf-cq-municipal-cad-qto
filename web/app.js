@@ -56,12 +56,14 @@ function message(selector, text, error = false) {
 
 function renderCapabilities() {
   const c = state.capabilities;
+  const dwgConverter = c.dwg_converter || {available: false, message: "DWG 转换器状态未知"};
   $("#ruleVersion").textContent = c.rule_pack_versions.join(" · ");
   $("#metrics").innerHTML = [
     ["输入格式", c.input_formats.join("、"), "默认 DXF；PDF / DWG 本地转 DXF"],
     ["文件入口", "单选 / 多选", "一次最多录入 50 个"],
     ["专业范围", c.disciplines.map((item) => ({road: "道路", network: "管网", retaining: "挡护"}[item] || item)).join(" · "), "统一算量核心"],
-    ["审核门", "必须人工复核", "Inference 不自动入账"]
+    ["审核门", "必须人工复核", "Inference 不自动入账"],
+    ["DWG 转换", dwgConverter.available ? "本机可用" : "待安装", dwgConverter.message]
   ].map(([label, value, hint]) => `<div class="metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(hint)}</small></div>`).join("");
   const groups = [
     ["道路工程", "road", c.road_scope],
@@ -88,7 +90,8 @@ function renderReviewSelect() {
 function renderSourceOptions() {
   const select = $("#calculateSourceSelect");
   const current = select.value;
-  const options = [{source_file: "fixtures/cq_retaining_demo.dxf", original_name: "合成样例"}].concat(state.files);
+  const usableFiles = state.files.filter((file) => file.input_format === "dxf" || file.conversion_status === "CONVERTED");
+  const options = [{source_file: "fixtures/cq_retaining_demo.dxf", original_name: "合成样例"}].concat(usableFiles);
   const seen = new Set();
   select.innerHTML = options.filter((file) => !seen.has(file.source_file) && seen.add(file.source_file)).map((file) => `<option value="${esc(file.source_file)}">${esc(file.original_name || file.source_file)}${file.input_format && file.input_format !== "dxf" ? ` · ${esc(file.input_format.toUpperCase())}→DXF` : ""} · ${esc(file.source_file)}</option>`).join("");
   if ([...select.options].some((option) => option.value === current)) select.value = current;
@@ -143,9 +146,22 @@ async function inspectUploadedFiles(selector = "#batchInspectionResult") {
     message("#fileMessage", "暂无已录入文件，请先选择并录入 DXF、PDF 或 DWG。", true);
     return;
   }
-  const payload = await request("/api/cad/inspect-batch", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({source_files: state.files.map((file) => file.source_file)})});
-  renderBatchInspections(payload.inspections || [], selector);
-  message("#fileMessage", `批量检查完成：${(payload.inspections || []).length} 个文件。`);
+  const messageSelector = selector === "#batchInspectionResult2" ? "#inspectMessage" : "#fileMessage";
+  const inspectableFiles = state.files.filter((file) => file.input_format === "dxf" || file.conversion_status === "CONVERTED");
+  const pendingFiles = state.files.filter((file) => !inspectableFiles.includes(file));
+  const pendingInspections = pendingFiles.map((file) => ({
+    status: "ERROR",
+    source_file: file.original_file || file.source_file,
+    error: file.conversion_status === "FAILED" ? "原始文件已保留；请安装本机 ODA File Converter 后重试 DWG→DXF。" : "文件必须先转换为 DXF 才能检查。"
+  }));
+  if (!inspectableFiles.length) {
+    renderBatchInspections(pendingInspections, selector);
+    message(messageSelector, "暂无可检查的 DXF；待转换文件已保留在本项目私有目录。", true);
+    return;
+  }
+  const payload = await request("/api/cad/inspect-batch", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({source_files: inspectableFiles.map((file) => file.source_file)})});
+  renderBatchInspections([...pendingInspections, ...(payload.inspections || [])], selector);
+  message(messageSelector, `批量检查完成：${(payload.inspections || []).length} 个 DXF，待转换 ${pendingFiles.length} 个。`);
 }
 
 async function refreshJobs() {
@@ -248,7 +264,7 @@ function bind() {
   document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.go)));
   $("#fileInput").addEventListener("change", (event) => { state.selectedFiles = [...event.target.files]; renderSelectedFiles(); });
   $("#fileDropzone").addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); $("#fileInput").click(); } });
-  $("#fileEntryForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await uploadSelectedFiles(); } catch (error) { message("#fileMessage", error.message, true); } });
+  $("#fileEntryForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await uploadSelectedFiles(); } catch (error) { message("#fileMessage", error.message, true); try { await refreshFiles(); } catch (_) { /* keep the original upload error visible */ } } });
   $("#inspectUploadedBtn").addEventListener("click", async () => { try { await inspectUploadedFiles("#batchInspectionResult"); } catch (error) { message("#fileMessage", error.message, true); } });
   $("#inspectUploadedBtn2").addEventListener("click", async () => { try { await inspectUploadedFiles("#batchInspectionResult2"); } catch (error) { message("#inspectMessage", error.message, true); } });
   $("#quickInspectForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await inspect(event.target.elements.source_file.value, "#quickMessage", false); showView("inspect"); $("#inspectForm").elements.source_file.value = event.target.elements.source_file.value; await inspect(event.target.elements.source_file.value, "#inspectMessage"); } catch (error) { message("#quickMessage", error.message, true); } });

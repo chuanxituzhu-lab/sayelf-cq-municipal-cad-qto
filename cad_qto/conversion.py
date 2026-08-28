@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import tempfile
 from math import ceil
 from pathlib import Path
 from typing import Any
@@ -10,6 +13,11 @@ from .dxf import DxfDocument, Entity, parse_ascii_dxf, write_canonical_dxf
 
 
 SUPPORTED_INPUT_EXTENSIONS = {".dxf", ".pdf", ".dwg"}
+DWG_CONVERTER_ENV = "MUNICIPAL_QTO_DWG_CONVERTER"
+ODA_DEFAULT_PATHS = (
+    Path(r"C:\Program Files\ODA\ODAFileConverter\ODAFileConverter.exe"),
+    Path(r"C:\Program Files (x86)\ODA\ODAFileConverter\ODAFileConverter.exe"),
+)
 
 
 class ConversionError(ValueError):
@@ -163,36 +171,123 @@ def _pdf_dxf(source: Path, destination: Path) -> dict[str, Any]:
     }
 
 
-def _dwg_dxf(source: Path, destination: Path) -> dict[str, Any]:
-    try:
-        from ezdxf import options  # type: ignore
-        from ezdxf.addons import odafc  # type: ignore
-    except ImportError as exc:
-        raise ConversionError("本机未安装 ezdxf/ODA 适配组件，无法进行 DWG→DXF；未上传 DWG") from exc
-    configured = os.environ.get("MUNICIPAL_QTO_DWG_CONVERTER", "").strip()
+def _find_oda_converter() -> Path | None:
+    configured = os.environ.get(DWG_CONVERTER_ENV, "").strip().strip('"')
     if configured:
         configured_path = Path(configured).expanduser()
         if not configured_path.is_file():
-            raise ConversionError(f"MUNICIPAL_QTO_DWG_CONVERTER 不存在：{configured}")
-        options.set("odafc-addon", "win_exec_path", str(configured_path))
-    if not odafc.is_installed():
-        raise ConversionError("未发现本机 DWG→DXF 转换器；请安装 ODA File Converter，并可用 MUNICIPAL_QTO_DWG_CONVERTER 指定 exe。系统未上传 DWG")
+            raise ConversionError(f"{DWG_CONVERTER_ENV} 指向的程序不存在：{configured}")
+        return configured_path.resolve()
+    for candidate in ODA_DEFAULT_PATHS:
+        if candidate.is_file():
+            return candidate.resolve()
+    for command in ("ODAFileConverter.exe", "ODAFileConverter"):
+        found = shutil.which(command)
+        if found:
+            return Path(found).resolve()
+    return None
+
+
+def dwg_converter_status() -> dict[str, Any]:
+    """Return a safe local readiness status without exposing executable paths."""
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        odafc.convert(source, destination, version="R2018", audit=True, replace=True)
-        if not destination.exists() or destination.stat().st_size == 0:
-            raise ConversionError("本机 DWG 转换器未生成有效 DXF")
-        parse_ascii_dxf(destination)
+        converter = _find_oda_converter()
+    except ConversionError as exc:
+        return {"available": False, "status": "CONFIG_ERROR", "message": str(exc)}
+    if converter is None:
+        return {
+            "available": False,
+            "status": "MISSING",
+            "message": "未发现本机 ODA File Converter；DWG 需先转成 DXF",
+        }
+    return {"available": True, "status": "READY", "message": "本机 ODA File Converter 可用"}
+
+
+def _oda_startupinfo() -> Any:
+    if os.name != "nt":
+        return None
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return startupinfo
+
+
+def _tool_output(stdout: str, stderr: str) -> str:
+    combined = "；".join(part.strip() for part in (stdout, stderr) if part and part.strip())
+    return combined[:1200]
+
+
+def _dwg_dxf(source: Path, destination: Path) -> dict[str, Any]:
+    converter = _find_oda_converter()
+    if converter is None:
+        try:
+            signature = source.read_bytes()[:6].decode("ascii", errors="replace")
+        except OSError:
+            signature = "未知"
+        raise ConversionError(
+            f"DWG 文件已收到，版本标记 {signature or '未知'}；但本机未发现 ODA File Converter，"
+            f"无法完成 DWG→DXF。请安装 ODA File Converter，或设置 {DWG_CONVERTER_ENV} 指向 ODAFileConverter.exe。"
+        )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="municipal_qto_oda_") as output_folder:
+            output_dir = Path(output_folder)
+            command = [
+                str(converter),
+                str(source.parent),
+                str(output_dir),
+                "ACAD2018",
+                "DXF",
+                "0",
+                "1",
+                source.name,
+            ]
+            try:
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=180,
+                    startupinfo=_oda_startupinfo(),
+                )
+            except FileNotFoundError as exc:
+                raise ConversionError(f"已找到 ODA 转换器，但无法启动：{converter.name}") from exc
+            except PermissionError as exc:
+                raise ConversionError(f"ODA 转换器没有执行权限：{converter.name}") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise ConversionError("本机 DWG→DXF 转换超过 180 秒，已停止，未采用不完整输出") from exc
+            if completed.returncode != 0:
+                detail = _tool_output(completed.stdout, completed.stderr)
+                suffix = f"；程序输出：{detail}" if detail else ""
+                raise ConversionError(f"本机 ODA DWG→DXF 转换失败，返回码 {completed.returncode}{suffix}")
+
+            candidates = [
+                item for item in output_dir.iterdir()
+                if item.is_file() and item.suffix.lower() == ".dxf" and item.stem.casefold() == source.stem.casefold()
+            ]
+            if len(candidates) != 1:
+                raise ConversionError(f"ODA 转换未生成唯一的 {source.stem}.dxf，未采用不确定输出")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(candidates[0], destination)
     except ConversionError:
         raise
+    except OSError as exc:
+        raise ConversionError(f"本机 DWG→DXF 文件处理失败：{exc}") from exc
+
+    if not destination.exists() or destination.stat().st_size == 0:
+        raise ConversionError("本机 DWG 转换器未生成有效 DXF")
+    try:
+        parse_ascii_dxf(destination)
     except Exception as exc:
-        raise ConversionError(f"本机 DWG→DXF 转换失败：{exc}") from exc
+        raise ConversionError(f"ODA 已生成 DXF，但项目解析器无法读取该输出：{exc}") from exc
     return {
         "status": "CONVERTED",
-        "method": "local-ezdxf-odafc",
+        "method": "local-oda-cli",
         "source_format": "dwg",
         "converted_format": "dxf",
-        "warnings": ["DWG 转 DXF 依赖部署机已安装的 ODA File Converter；转换后的实体、文字、单位仍需人工核对"],
+        "warnings": ["DWG 转 DXF 由本机 ODA File Converter 完成；转换后的实体、文字、单位仍需人工核对"],
     }
 
 

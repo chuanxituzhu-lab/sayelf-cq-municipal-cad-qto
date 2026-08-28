@@ -36,7 +36,9 @@ capabilities
   → export_job（Excel / PDF）
 ```
 
-文件可以在 WebUI 通过单选/多选录入；默认 DXF，PDF 由本机 PyMuPDF 提取矢量图元后生成 DXF，DWG 依赖部署机已安装并配置的 ODA File Converter。MCP 调用仍必须传项目根目录内的相对路径，批量检查使用 `municipal_qto_inspect_dxf_batch`。不同文件不混成一个算量作业。
+文件可以在 WebUI 通过单选/多选录入；默认 DXF，PDF 由本机 PyMuPDF 提取矢量图元后生成 DXF，DWG 直接调用部署机已安装并配置的 ODA File Converter 命令行。MCP 调用仍必须传项目根目录内的相对路径，批量检查使用 `municipal_qto_inspect_dxf_batch`。不同文件不混成一个算量作业。
+
+Windows 部署本插件所在项目时，可先运行根目录的 `scripts/setup_windows.ps1 -AcceptOdaTerms`。脚本按 ODA 官方来源下载并校验转换器，默认提取到 D 盘；不把 ODA 二进制提交到 GitHub。无网络时可传入本地 `-OdaMsiPath`。
 
 ## 当前支持
 
