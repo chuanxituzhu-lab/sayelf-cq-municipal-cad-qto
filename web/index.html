@@ -4,65 +4,85 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#132d3a">
-  <title>重庆市政 CAD 工程量计算（造价算量）</title>
+  <title>重庆市政 CAD 工程量计算（道路 / 管网 / 挡护 · 造价算量）</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><div class="brand-kicker">SAYELF / CAD QTO</div><h1 id="projectName">重庆市政 CAD 工程量计算（造价算量）</h1></div></div>
+      <div class="brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><div class="brand-kicker">SAYELF / CAD QTO</div><h1 id="projectName">重庆市政 CAD 工程量计算</h1></div></div>
       <div class="top-status"><span class="local-badge"><i></i> 本地私有算量</span><span id="ruleVersion">规则包读取中…</span></div>
     </header>
 
     <div class="shell-body">
       <aside class="sidebar">
-        <div class="scope-card"><span>当前工具</span><strong>CAD 工程量计算</strong><small>面向造价人员的图纸核算工作台</small></div>
+        <div class="scope-card"><span>当前工具</span><strong>CAD 工程量计算</strong><small>道路 · 管网 · 挡护 / 造价核算</small></div>
         <div class="nav-caption">算量流程</div>
         <nav class="nav" aria-label="CAD 算量工作区">
-          <button class="nav-button active" data-view="dashboard"><b>01</b><span><strong>算量工作台</strong><small>输入、状态、最近作业</small></span></button>
+          <button class="nav-button active" data-view="dashboard"><b>01</b><span><strong>文件录入</strong><small>单选、多选、私有保存</small></span></button>
           <button class="nav-button" data-view="inspect"><b>02</b><span><strong>图纸检查</strong><small>图层、实体、文字、告警</small></span></button>
-          <button class="nav-button" data-view="calculate"><b>03</b><span><strong>挡护结构算量</strong><small>断面确认与确定性计算</small></span></button>
+          <button class="nav-button" data-view="calculate"><b>03</b><span><strong>专业算量</strong><small>道路、管网、挡护</small></span></button>
           <button class="nav-button" data-view="review"><b>04</b><span><strong>结果复核</strong><small>公式、哈希、审核门</small></span></button>
           <button class="nav-button" data-view="jobs"><b>05</b><span><strong>作业记录</strong><small>本地作业与版本追踪</small></span></button>
         </nav>
-        <div class="boundary"><div><i></i><strong>数据边界</strong></div><p>只读取项目目录内的相对路径。原图和作业结果不会上传到外部网络。</p></div>
+        <div class="boundary"><div><i></i><strong>数据边界</strong></div><p>录入文件只保存到本仓库的本地私有目录，不上传、不读取另一个 cost-loop 仓库。</p></div>
       </aside>
 
       <main class="main">
         <section class="view active" id="view-dashboard">
-          <div class="hero"><div><span class="eyebrow">CAD 造价算量 / 工作台</span><h2>把图纸，变成可核对的数量。</h2><p>围绕一张 DXF 完成检查、标准化、挡护结构计算和人工复核。每个数量都带着来源、公式和状态。</p></div><button class="primary" data-go="inspect">开始检查图纸 <span>→</span></button></div>
+          <div class="hero"><div><span class="eyebrow">CAD 造价算量 / 文件入口</span><h2>先录入图纸，再核算工程量。</h2><p>支持单选或多选 DXF 文件。录入后逐张检查，再选择道路、管网或挡护专业输入人工确认参数。</p></div><button class="primary" data-go="calculate">进入专业算量 <span>→</span></button></div>
           <div class="metric-grid" id="metrics"></div>
-          <div class="process-title"><span>标准工作路径</span><small>确定性规则只在人工确认断面后运行</small></div>
-          <div class="process"><div class="process-step active"><b>01</b><span>输入 DXF</span><small>项目内相对路径</small></div><i>→</i><div class="process-step"><b>02</b><span>检查 / 标准化</span><small>保留源图哈希</small></div><i>→</i><div class="process-step"><b>03</b><span>确认断面</span><small>不补猜尺寸</small></div><i>→</i><div class="process-step"><b>04</b><span>计算工程量</span><small>Inference 草稿</small></div><i>→</i><div class="process-step"><b>05</b><span>人工复核</span><small>才可能成为 Fact</small></div></div>
+          <section class="panel file-entry-panel">
+            <div class="panel-head"><div><span class="eyebrow">Input / Local files</span><h3>录入施工图文件</h3></div><span class="state-chip">单选 / 多选</span></div>
+            <form id="fileEntryForm">
+              <label class="file-picker"><span>选择项目 DXF 文件</span><input id="fileInput" name="files" type="file" accept=".dxf" multiple required><small>当前只接受 ASCII DXF；可一次选择 1 个或多个文件，文件会保存到本项目 data/cad_inputs/。</small></label>
+              <div id="selectedFiles" class="file-list"><span class="muted">尚未选择文件。</span></div>
+              <div class="button-row"><button class="primary" type="submit">录入并检查 <span>→</span></button><button class="outline" id="inspectUploadedBtn" type="button">批量检查已录入文件</button></div>
+            </form>
+            <div id="fileMessage" class="message"></div>
+            <div id="batchInspectionResult" class="batch-result"></div>
+          </section>
+          <div class="process-title"><span>标准工作路径</span><small>文件录入 → 图纸检查 → 专业参数 → 几何算量 → 人工复核</small></div>
+          <div class="process"><div class="process-step active"><b>01</b><span>录入文件</span><small>单选 / 多选 DXF</small></div><i>→</i><div class="process-step"><b>02</b><span>检查 / 标准化</span><small>保留源图哈希</small></div><i>→</i><div class="process-step"><b>03</b><span>选择专业</span><small>道路 / 管网 / 挡护</small></div><i>→</i><div class="process-step"><b>04</b><span>计算工程量</span><small>Inference 草稿</small></div><i>→</i><div class="process-step"><b>05</b><span>人工复核</span><small>才可能成为 Fact</small></div></div>
           <div class="two-col">
-            <section class="panel quick-panel"><div class="panel-head"><div><span class="eyebrow">快速开始</span><h3>选择一张项目内图纸</h3></div><span class="state-chip">ASCII DXF</span></div><form id="quickInspectForm"><label>DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="quickNormalizeBtn" type="button">生成标准化副本</button></div></form><div id="quickMessage" class="message"></div></section>
-            <section class="panel latest-panel"><div class="panel-head"><div><span class="eyebrow">最近作业</span><h3>本地算量结果</h3></div><button class="text-button" data-go="jobs">查看全部 →</button></div><div id="latestJob"></div></section>
+            <section class="panel quick-panel"><div class="panel-head"><div><span class="eyebrow">Quick inspect</span><h3>已有项目内文件</h3></div><span class="state-chip">ASCII DXF</span></div><form id="quickInspectForm"><label>DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="quickNormalizeBtn" type="button">生成标准化副本</button></div></form><div id="quickMessage" class="message"></div></section>
+            <section class="panel latest-panel"><div class="panel-head"><div><span class="eyebrow">Recent jobs</span><h3>本地算量结果</h3></div><button class="text-button" data-go="jobs">查看全部 →</button></div><div id="latestJob"></div></section>
           </div>
-          <section class="panel scope-panel"><div class="panel-head"><div><span class="eyebrow">当前规则范围</span><h3>挡护结构工程量</h3></div><span class="muted">只做几何数量，不套定额和单价</span></div><div id="scopeItems" class="scope-items"></div></section>
+          <section class="panel scope-panel"><div class="panel-head"><div><span class="eyebrow">Current scope</span><h3>三类市政工程量</h3></div><span class="muted">只做几何数量，不套定额和单价</span></div><div id="disciplineScope" class="discipline-scope"></div></section>
         </section>
 
         <section class="view" id="view-inspect">
-          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 图纸检查</span><h2>先看清图纸，再开始算量</h2><p>检查是只读操作；标准化只生成副本，不覆盖原始 DXF。</p></div></div>
-          <section class="panel form-panel"><form id="inspectForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>不接受绝对路径、公开 URL 或项目目录外文件。</small></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="normalizeBtn" type="button">生成标准化 DXF</button></div><div id="inspectMessage" class="message"></div></form></section>
+          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 图纸检查</span><h2>先看清图纸，再开始算量</h2><p>检查是只读操作；标准化只生成副本，不覆盖原始 DXF。已录入文件可以一次批量检查。</p></div></div>
+          <section class="panel form-panel"><form id="inspectForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>不接受绝对路径、公开 URL 或项目目录外文件。</small></label><div class="button-row"><button class="primary" type="submit">检查当前图纸 <span>→</span></button><button class="outline" id="normalizeBtn" type="button">生成标准化 DXF</button><button class="outline" id="inspectUploadedBtn2" type="button">批量检查已录入文件</button></div><div id="inspectMessage" class="message"></div></form></section>
           <section class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">Observation</span><h3>图纸检查结果</h3></div><span class="state-chip" id="inspectState">等待检查</span></div><div id="inspectionResult" class="result-empty">输入图纸路径并执行检查，结果会显示在这里。</div></section>
+          <section class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">Batch observation</span><h3>批量文件检查</h3></div></div><div id="batchInspectionResult2" class="result-empty">尚未执行批量检查。</div></section>
         </section>
 
         <section class="view" id="view-calculate">
-          <div class="page-heading"><div><span class="eyebrow">工作面 03 / 挡护结构算量</span><h2>人工确认断面，计算工程数量</h2><p>图层识别只提供候选；下方断面参数必须来自图纸、断面表或设计说明。</p></div></div>
+          <div class="page-heading"><div><span class="eyebrow">工作面 03 / 综合专业算量</span><h2>选择专业，计算市政工程量</h2><p>图层识别只提供候选；以下道路、管网和挡护参数必须来自图纸、断面表或设计说明。</p></div></div>
           <div class="notice"><b>计算结果是 Inference</b><span>不会自动进入造价系统。缺少关键尺寸、单位异常或图纸告警时，必须停在人工复核。</span></div>
-          <form class="panel form-panel" id="calculateForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><label class="json-field">人工确认的挡护结构断面参数<textarea id="sectionsInput" name="sections_json" rows="19" required></textarea><small>当前规则包：<code>cq-municipal-retaining-v0.1</code>；支持挡墙、基础、开挖、回填、泄水孔、反滤层、锚杆/锚索、抗滑桩、喷射混凝土、钢筋网。</small></label><div class="button-row"><button class="primary" type="submit">执行挡护结构算量 <span>→</span></button><button class="outline" id="calculateInspectBtn" type="button">先检查图纸</button></div><div id="calculateMessage" class="message"></div></form>
-          <section class="panel result-panel" id="calculationPanel"><div class="panel-head"><div><span class="eyebrow">Inference / 工程量草稿</span><h3>计算结果</h3></div><span class="state-chip warning" id="calculationState">REVIEW_REQUIRED</span></div><div id="calculationResult" class="result-empty">执行算量后显示分项数量、公式和告警。</div></section>
+          <form class="panel form-panel" id="calculateForm">
+            <label>用于算量的项目内 DXF<select name="source_file" id="calculateSourceSelect"><option value="fixtures/cq_retaining_demo.dxf">合成样例 · fixtures/cq_retaining_demo.dxf</option></select></label>
+            <div class="discipline-grid">
+              <label class="discipline-card"><strong>道路工程</strong><small>路面、基层、路基挖填、路缘石、人行道</small><textarea id="roadSectionsInput" rows="12" aria-label="道路断面参数"></textarea></label>
+              <label class="discipline-card"><strong>管网工程</strong><small>管道、沟槽、垫层、回填、检查井、雨水口</small><textarea id="networkSectionsInput" rows="12" aria-label="管网分段参数"></textarea></label>
+              <label class="discipline-card"><strong>挡护工程</strong><small>挡墙、基础、开挖、回填、泄水孔、锚杆、抗滑桩</small><textarea id="retainingSectionsInput" rows="12" aria-label="挡护断面参数"></textarea></label>
+            </div>
+            <small>至少填写一种专业参数数组；空数组不会计算该专业。当前规则包：道路 v0.1、管网 v0.1、挡护 v0.1。</small>
+            <div class="button-row"><button class="primary" type="submit">执行综合算量 <span>→</span></button><button class="outline" id="calculateInspectBtn" type="button">先检查图纸</button></div><div id="calculateMessage" class="message"></div>
+          </form>
+          <section class="panel result-panel" id="calculationPanel"><div class="panel-head"><div><span class="eyebrow">Inference / 工程量草稿</span><h3>计算结果</h3></div><span class="state-chip warning" id="calculationState">REVIEW_REQUIRED</span></div><div id="calculationResult" class="result-empty">执行算量后显示道路、管网、挡护分项数量、公式和告警。</div></section>
         </section>
 
         <section class="view" id="view-review">
-          <div class="page-heading"><div><span class="eyebrow">工作面 04 / 结果复核</span><h2>数量可追溯，结论可复核</h2><p>选择一个本地作业，核对来源、设计依据、断面、单位/规则和工程部位。</p></div></div>
+          <div class="page-heading"><div><span class="eyebrow">工作面 04 / 结果复核</span><h2>数量可追溯，结论可复核</h2><p>选择一个本地作业，核对来源、设计依据、专业参数、单位/规则和工程部位。</p></div></div>
           <section class="panel form-panel"><label>选择算量作业<select id="reviewJobSelect"><option value="">请选择作业</option></select></label><div class="button-row"><button class="outline" id="loadReviewBtn" type="button">读取作业详情</button></div><div id="reviewLoadMessage" class="message"></div></section>
           <section class="panel result-panel" id="reviewDetailPanel"><div class="panel-head"><div><span class="eyebrow">Evidence</span><h3>作业证据</h3></div><span class="state-chip warning" id="reviewState">等待选择</span></div><div id="reviewDetail" class="result-empty">选择作业后显示结果证据。</div></section>
-          <section class="panel review-form" id="reviewFormPanel" hidden><div class="panel-head"><div><span class="eyebrow">Decision</span><h3>人工复核门</h3></div><span class="muted">通过需要完成全部五项检查</span></div><div class="review-grid"><label>审核人标识<input id="reviewerId" placeholder="正式模式使用本地已认证身份"></label><label>审核岗位<select id="reviewerRole"><option value="cost">造价</option><option value="technical">技术</option><option value="production">生产</option></select></label></div><div class="checks"><label><input type="checkbox" data-check value="source_drawing">原始图纸与版本</label><label><input type="checkbox" data-check value="design_basis">设计说明与依据</label><label><input type="checkbox" data-check value="section_parameters">挡护断面参数</label><label><input type="checkbox" data-check value="units_and_rule">单位与规则版本</label><label><input type="checkbox" data-check value="location_scope">工程部位与范围</label></div><label>审核备注<textarea id="reviewNote" rows="3" placeholder="记录核对结论、缺口或退回原因"></textarea></label><div class="button-row"><button class="outline" id="returnBtn" type="button">退回补充</button><button class="danger" id="rejectBtn" type="button">审核不通过</button><button class="primary" id="approveBtn" type="button">确认通过</button></div><div id="reviewMessage" class="message"></div></section>
+          <section class="panel review-form" id="reviewFormPanel" hidden><div class="panel-head"><div><span class="eyebrow">Decision</span><h3>人工复核门</h3></div><span class="muted">通过需要完成全部五项检查</span></div><div class="review-grid"><label>审核人标识<input id="reviewerId" placeholder="正式模式使用本地已认证身份"></label><label>审核岗位<select id="reviewerRole"><option value="cost">造价</option><option value="technical">技术</option><option value="production">生产</option></select></label></div><div class="checks"><label><input type="checkbox" data-check value="source_drawing">原始图纸与版本</label><label><input type="checkbox" data-check value="design_basis">设计说明与依据</label><label><input type="checkbox" data-check value="section_parameters">专业参数与断面</label><label><input type="checkbox" data-check value="units_and_rule">单位与规则版本</label><label><input type="checkbox" data-check value="location_scope">工程部位与范围</label></div><label>审核备注<textarea id="reviewNote" rows="3" placeholder="记录核对结论、缺口或退回原因"></textarea></label><div class="button-row"><button class="outline" id="returnBtn" type="button">退回补充</button><button class="danger" id="rejectBtn" type="button">审核不通过</button><button class="primary" id="approveBtn" type="button">确认通过</button></div><div id="reviewMessage" class="message"></div></section>
         </section>
 
         <section class="view" id="view-jobs">
-          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 05 / 作业记录</span><h2>所有算量作业都留在本地</h2><p>按源图、规则版本、数量条数和审核状态追踪历史，不覆盖原始图纸。</p></div><button class="outline" id="refreshJobsBtn" type="button">刷新作业</button></div>
+          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 05 / 作业记录</span><h2>所有算量作业都留在本地</h2><p>按源图、专业、规则版本、数量条数和审核状态追踪历史，不覆盖原始图纸。</p></div><button class="outline" id="refreshJobsBtn" type="button">刷新作业</button></div>
           <section class="panel jobs-panel"><div id="jobsList"></div></section>
         </section>
       </main>

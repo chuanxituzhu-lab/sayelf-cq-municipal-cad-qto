@@ -8,7 +8,7 @@ from .job import run_job_file
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="重庆市政 DXF 挡护结构确定性算量（本地 MVP）")
+    parser = argparse.ArgumentParser(description="重庆市政 DXF 道路、管网、挡护确定性算量（本地 MVP）")
     parser.add_argument("--input", required=True, help="算量输入 JSON")
     parser.add_argument("--output", required=True, help="结果 JSON")
     args = parser.parse_args()

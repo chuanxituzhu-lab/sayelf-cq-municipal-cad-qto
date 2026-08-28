@@ -13,8 +13,10 @@ import server as app_server
 from cad_qto.canonical import canonicalize_dxf
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf
 from cad_qto.job import run_job
+from cad_qto.network import calculate_network_sections
 from cad_qto.retaining import RetainingInputError, calculate_retaining_sections
 from cad_qto.review import ReviewInputError, record_job_review
+from cad_qto.road import calculate_road_sections
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +58,33 @@ class MunicipalQtoTests(unittest.TestCase):
         self.assertEqual(job["calculation"]["review_status"], "待人工审核")
         self.assertTrue(all(item["status"] == "Inference" for item in job["calculation"]["quantities"]))
 
+    def test_road_and_network_quantities_are_deterministic_and_explicit(self) -> None:
+        source_manifest = {"source_file": "fixtures/cq_retaining_demo.dxf", "source_sha256": "demo-sha"}
+        road = calculate_road_sections([{
+            "section_id": "RD-001", "length_m": 30, "road_type": "城市支路",
+            "carriageway_width_m": 7, "surface_thickness_m": 0.18,
+            "base_thickness_m": 0.20, "subbase_thickness_m": 0.20,
+            "roadbed_width_m": 9, "cut_depth_m": 0.30, "curb_length_m": 60,
+            "sidewalk_area_m2": 90,
+        }], source_manifest)
+        network = calculate_network_sections([{
+            "segment_id": "PS-001", "length_m": 30, "network_type": "雨水管",
+            "pipe_outer_diameter_mm": 600, "trench_width_m": 1.2,
+            "trench_depth_m": 1.8, "bedding_thickness_m": 0.15,
+            "manhole_count": 2, "inlet_count": 3, "road_restoration_area_m2": 36,
+        }], source_manifest)
+        road_totals = {item["item_code"]: item["quantity"] for item in road["totals"]}
+        network_totals = {item["item_code"]: item["quantity"] for item in network["totals"]}
+        self.assertEqual(road["discipline"], "road")
+        self.assertEqual(road_totals["CQ-ROAD-SURFACE-AREA"], 210.0)
+        self.assertEqual(road_totals["CQ-ROAD-SURFACE"], 37.8)
+        self.assertEqual(road_totals["CQ-ROAD-CUT"], 81.0)
+        self.assertEqual(network["discipline"], "network")
+        self.assertEqual(network_totals["CQ-NET-PIPE"], 30.0)
+        self.assertEqual(network_totals["CQ-NET-EXC"], 64.8)
+        self.assertEqual(network_totals["CQ-NET-BEDDING"], 5.4)
+        self.assertEqual(network_totals["CQ-NET-MANHOLE"], 2.0)
+
     def test_incomplete_section_stops_instead_of_guessing(self) -> None:
         with self.assertRaises(RetainingInputError):
             calculate_retaining_sections([{"section_id": "R-X", "length_m": 20}], {})
@@ -83,11 +112,12 @@ class MunicipalQtoTests(unittest.TestCase):
         self.assertEqual(promoted["review"]["semantic_status"], "Fact")
 
     def test_server_exposes_only_cad_workflow_and_persists_job(self) -> None:
-        original = {name: getattr(app_server, name) for name in ("DATA", "CAD_JOBS", "PROJECT_ID", "PROJECT_NAME", "REVIEWER_ID")}
+        original = {name: getattr(app_server, name) for name in ("DATA", "CAD_JOBS", "CAD_INPUTS", "PROJECT_ID", "PROJECT_NAME", "REVIEWER_ID")}
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder) / "data"
             app_server.DATA = data
             app_server.CAD_JOBS = data / "cad_jobs"
+            app_server.CAD_INPUTS = data / "cad_inputs"
             app_server.PROJECT_ID = "TEST-CAD-QTO"
             app_server.PROJECT_NAME = "测试 CAD 造价算量"
             app_server.REVIEWER_ID = None
@@ -100,7 +130,35 @@ class MunicipalQtoTests(unittest.TestCase):
                     bootstrap = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(bootstrap["project"]["project_name"], "测试 CAD 造价算量")
                 self.assertEqual(bootstrap["input_formats"], ["ASCII DXF"])
+                self.assertEqual(bootstrap["disciplines"], ["road", "network", "retaining"])
+                self.assertTrue(bootstrap["file_entry"]["multiple"])
                 self.assertNotIn("roles", bootstrap)
+
+                boundary = "----sayelf-cad-qto-test"
+                uploaded_body = (
+                    f"--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"demo.dxf\"\r\nContent-Type: application/dxf\r\n\r\n".encode("utf-8")
+                    + FIXTURE.read_bytes()
+                    + f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"demo-2.dxf\"\r\nContent-Type: application/dxf\r\n\r\n".encode("utf-8")
+                    + FIXTURE.read_bytes()
+                    + f"\r\n--{boundary}--\r\n".encode("utf-8")
+                )
+                upload_request = urllib.request.Request(f"{base}/api/cad/files", data=uploaded_body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+                with urllib.request.urlopen(upload_request) as response:
+                    uploaded = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 201)
+                self.assertEqual(len(uploaded["files"]), 2)
+                uploaded_source = uploaded["files"][0]["source_file"]
+                self.assertNotEqual(uploaded_source, "")
+                self.assertEqual(len(list(app_server.CAD_INPUTS.glob("*.dxf"))), 2)
+                with urllib.request.urlopen(f"{base}/api/cad/files") as response:
+                    listed_files = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(len(listed_files["files"]), 2)
+
+                inspect_batch_request = urllib.request.Request(f"{base}/api/cad/inspect-batch", data=json.dumps({"source_files": ["fixtures/cq_retaining_demo.dxf", "fixtures/cq_retaining_demo.dxf"]}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(inspect_batch_request) as response:
+                    batch = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(len(batch["inspections"]), 2)
+                self.assertTrue(all(item["status"] == "PARSED" for item in batch["inspections"]))
 
                 inspect_request = urllib.request.Request(f"{base}/api/cad/inspect", data=json.dumps({"source_file": "fixtures/cq_retaining_demo.dxf"}).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(inspect_request) as response:
@@ -108,18 +166,20 @@ class MunicipalQtoTests(unittest.TestCase):
                 self.assertEqual(inspection["inspection"]["status"], "PARSED")
 
                 payload = json.loads(INPUT.read_text(encoding="utf-8"))
-                calculate_request = urllib.request.Request(f"{base}/api/cad/retaining", data=json.dumps({"source_file": "fixtures/cq_retaining_demo.dxf", "sections": payload["sections"]}, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+                calculate_request = urllib.request.Request(f"{base}/api/cad/calculate", data=json.dumps({"source_file": "fixtures/cq_retaining_demo.dxf", "road_sections": [{"section_id": "RD-001", "length_m": 30, "carriageway_width_m": 7, "surface_thickness_m": 0.18, "base_thickness_m": 0.2, "subbase_thickness_m": 0.2}], "network_sections": [{"segment_id": "PS-001", "length_m": 30, "pipe_outer_diameter_mm": 600, "trench_width_m": 1.2, "trench_depth_m": 1.8, "bedding_thickness_m": 0.15}], "retaining_sections": payload["sections"]}, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(calculate_request) as response:
                     calculation = json.loads(response.read().decode("utf-8"))
                     self.assertEqual(response.status, 201)
                 job_id = calculation["summary"]["job_id"]
                 self.assertEqual(calculation["job"]["status"], "REVIEW_REQUIRED")
+                self.assertEqual(calculation["job"]["calculation"]["disciplines"], ["road", "network", "retaining"])
+                self.assertGreater(calculation["summary"]["quantity_count"], 13)
                 self.assertTrue((app_server.CAD_JOBS / f"{job_id}.json").exists())
 
                 with urllib.request.urlopen(f"{base}/api/cad/jobs") as response:
                     jobs = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(len(jobs["jobs"]), 1)
-                self.assertEqual(jobs["jobs"][0]["quantity_count"], 13)
+                self.assertGreater(jobs["jobs"][0]["quantity_count"], 13)
 
                 with urllib.request.urlopen(f"{base}/api/cad/jobs/{job_id}") as response:
                     detail = json.loads(response.read().decode("utf-8"))

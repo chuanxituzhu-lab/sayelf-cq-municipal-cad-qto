@@ -15,14 +15,16 @@
 
 插件只复用项目内唯一的 `cad_qto` 核心，不复制第二套规则。部署时必须把 `MUNICIPAL_QTO_PROJECT_ROOT` 指向包含 `cad_qto/`、`data/` 和项目图纸的私有根目录。
 
-## 2. 七个统一工具
+## 2. 九个统一工具
 
 | 工具 | 作用 | 写入 | 人工门禁 |
 |---|---|---:|---:|
 | `municipal_qto_capabilities` | 读取能力、规则版本和数据边界 | 否 | 否 |
-| `municipal_qto_inspect_dxf` | 检查实体、图层、文字、单位和告警 | 否 | 识别结果为 Hypothesis |
+| `municipal_qto_inspect_dxf` | 检查单张 DXF 的实体、图层、文字、单位和告警 | 否 | 识别结果为 Hypothesis |
+| `municipal_qto_inspect_dxf_batch` | 批量检查多张 DXF，逐文件返回结果 | 否 | 识别结果为 Hypothesis |
 | `municipal_qto_normalize_dxf` | 生成标准化 DXF 副本 | 是 | 不覆盖原图 |
-| `municipal_qto_calculate_retaining` | 计算挡护结构工程量草稿 | 是 | 断面参数必须人工确认 |
+| `municipal_qto_calculate` | 计算道路、管网、挡护综合工程量草稿 | 是 | 专业参数必须人工确认 |
+| `municipal_qto_calculate_retaining` | 旧版挡护计算兼容入口 | 是 | 断面参数必须人工确认 |
 | `municipal_qto_list_jobs` | 列出本地作业摘要 | 否 | 否 |
 | `municipal_qto_get_job` | 读取公式、输入、哈希、告警和审核状态 | 否 | 结果仍是 Inference |
 | `municipal_qto_review_job` | 写入人工复核清单和决定 | 是 | 未认证身份不能提升为 Fact |
@@ -30,15 +32,15 @@
 固定调用顺序：
 
 ```text
-capabilities → inspect_dxf → normalize_dxf（可选）
-→ 人工确认断面 → calculate_retaining → get_job
+capabilities → inspect_dxf / inspect_dxf_batch → normalize_dxf（可选）
+→ 人工确认道路 / 管网 / 挡护参数 → calculate → get_job
 ```
 
 ## 3. 各宿主验收矩阵
 
 | 宿主 | 入口 | 已完成 | 尚需租户侧验收 |
 |---|---|---|---|
-| Codex | 插件清单或 `adapters/codex.config.toml.example` | 本地 STDIO、握手、工具发现、路径门禁、挡护计算 | 当前 Codex 客户端加载一次 |
+| Codex | 插件清单或 `adapters/codex.config.toml.example` | 本地 STDIO、握手、工具发现、路径门禁、三专业计算 | 当前 Codex 客户端加载一次 |
 | Claude Code | `--plugin-dir` + `.claude-plugin`，必要时使用 `adapters/claude-code.mcp.json` | 清单、Skill、MCP 配置模板 | 真实 Claude Code 会话批准并调用一次 |
 | WorkBuddy/CodeBuddy | `.codebuddy-plugin` + 本地连接器，必要时使用 `adapters/workbuddy.mcp.json` | 插件清单、STDIO 配置、权限边界 | 当前企业租户的本地连接器权限测试 |
 | 通义千问/百炼 | `adapters/qwen-bailian.mcp.json` | HTTP MCP、Bearer 鉴权、项目根目录门禁 | 私有网络部署、平台导入、超时和撤销测试 |
@@ -55,7 +57,7 @@ python -m unittest discover -s tests -v
 python plugins/municipal-cad-qto/mcp_server.py
 ```
 
-当前证据基线：覆盖插件清单与本地 marketplace、DXF 解析、标准化哈希、挡护结构确定性计算、人工审核状态、MCP STDIO 握手、七工具发现、项目路径越界拒绝、作业本地留痕、HTTP Bearer 鉴权和会话校验；测试数量以当前回归输出为准。
+当前证据基线：覆盖插件清单与本地 marketplace、DXF 解析、标准化哈希、道路/管网/挡护确定性计算、单/多文件入口、人工审核状态、MCP STDIO 握手、九工具发现、项目路径越界拒绝、作业本地留痕、HTTP Bearer 鉴权和会话校验；测试数量以当前回归输出为准。
 
 ## 5. 可信边界
 
@@ -68,6 +70,6 @@ python plugins/municipal-cad-qto/mcp_server.py
 ## 6. 回退与变更规则
 
 - 本地回退：停用宿主中的 MCP 配置或移除插件目录；项目原始 DXF 和既有作业不被删除。
-- 规则回退：固定使用 `cq-municipal-retaining-v0.1`，新规则包必须新增版本并重新跑基线测试。
+- 规则回退：道路、管网、挡护分别固定使用各自版本化规则包；新规则包必须新增版本并重新跑基线测试。
 - 平台回退：先撤销远程 MCP 地址或网关路由，再保留本地 STDIO 方式核验。
 - 任何平台导入前，检查插件目录、配置模板、日志和打包物中没有真实项目资料、密钥或内部路径。

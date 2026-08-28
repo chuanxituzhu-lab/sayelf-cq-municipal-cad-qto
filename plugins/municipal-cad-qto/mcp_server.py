@@ -26,10 +26,10 @@ from cad_qto.review import ReviewInputError, record_job_review, write_job_atomic
 
 
 SERVER_NAME = "municipal-cad-qto"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INSTRUCTIONS = (
-    "这是本地优先的重庆市政 CAD 工程量辅助工具。只接受项目私有目录内的 ASCII DXF；"
+    "这是本地优先的重庆市政 CAD 工程量辅助工具，覆盖道路、管网和挡护三类几何算量。只接受项目私有目录内的 ASCII DXF；"
     "图层识别是 Hypothesis，公式计算是 Inference，必须人工审核后才能成为 Fact。"
     "不得覆盖原图、不得越权读取项目目录外文件、不得上传真实工程资料。"
     "复核工具必须明确 confirm=true；未配置本地审核身份时只能记录待授权状态。"
@@ -83,11 +83,28 @@ def _tool(name: str, description: str, properties: dict[str, Any], required: lis
     }
 
 
+CALCULATION_PROPERTIES = {
+    "source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"},
+    "road_sections": {"type": "array", "description": "人工确认的道路断面参数数组", "items": {"type": "object"}},
+    "network_sections": {"type": "array", "description": "人工确认的管网分段参数数组", "items": {"type": "object"}},
+    "retaining_sections": {"type": "array", "description": "人工确认的挡护结构断面参数数组", "items": {"type": "object"}},
+    "sections": {"type": "array", "description": "兼容旧调用的挡护结构断面参数数组", "items": {"type": "object"}},
+    "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$", "description": "可选、稳定的本地作业编号"},
+    "project_id": {"type": "string", "description": "可选的本地项目编号"},
+    "rule_pack_version": {"type": "string", "description": "可选的兼容规则包版本"},
+    "road_rule_pack_version": {"type": "string", "description": "可选道路规则包版本"},
+    "network_rule_pack_version": {"type": "string", "description": "可选管网规则包版本"},
+    "retaining_rule_pack_version": {"type": "string", "description": "可选挡护规则包版本"},
+}
+
+
 TOOLS = [
     _tool("municipal_qto_capabilities", "读取本地算量核心的支持范围、规则版本和数据边界。", {}, [], read_only=True, idempotent=True),
     _tool("municipal_qto_inspect_dxf", "只读检查项目内 ASCII DXF 的支持实体、图层、文字、单位和未支持实体。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}}, ["source_file"], read_only=True, idempotent=True),
+    _tool("municipal_qto_inspect_dxf_batch", "批量只读检查多个项目内 ASCII DXF，单个文件失败不会吞掉其他文件结果。", {"source_files": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}}}, ["source_files"], read_only=True, idempotent=True),
     _tool("municipal_qto_normalize_dxf", "在项目私有目录内生成标准化 DXF 副本，不覆盖原图。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}, "output_file": {"type": "string", "description": "可选，项目根目录内的输出相对路径"}}, ["source_file"], read_only=False, idempotent=True),
-    _tool("municipal_qto_calculate_retaining", "按人工确认的挡护结构断面参数计算工程量草稿，并保存带证据的本地作业。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}, "sections": {"type": "array", "description": "人工确认的挡护结构断面参数数组", "items": {"type": "object"}}, "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$", "description": "可选、稳定的本地作业编号"}, "project_id": {"type": "string", "description": "可选的单项目编号"}, "rule_pack_version": {"type": "string", "description": "可选规则包版本"}}, ["source_file", "sections"], read_only=False, idempotent=False),
+    _tool("municipal_qto_calculate", "按人工确认参数计算道路、管网和挡护结构工程量草稿，并保存带证据的本地作业。至少提供一种专业参数数组。", CALCULATION_PROPERTIES, ["source_file"], read_only=False, idempotent=False),
+    _tool("municipal_qto_calculate_retaining", "兼容旧调用：按人工确认的挡护结构断面参数计算工程量草稿，并保存带证据的本地作业。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}, "sections": {"type": "array", "description": "人工确认的挡护结构断面参数数组", "items": {"type": "object"}}, "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$", "description": "可选、稳定的本地作业编号"}, "project_id": {"type": "string", "description": "可选的本地项目编号"}, "rule_pack_version": {"type": "string", "description": "可选规则包版本"}}, ["source_file", "sections"], read_only=False, idempotent=False),
     _tool("municipal_qto_list_jobs", "列出项目私有目录内的算量作业摘要。", {}, [], read_only=True, idempotent=True),
     _tool("municipal_qto_get_job", "读取指定算量作业的完整公式、输入、哈希、告警和审核状态。", {"job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$"}}, ["job_id"], read_only=True, idempotent=True),
     _tool("municipal_qto_review_job", "按人工确认清单记录算量作业复核；只有本地已认证审核人才能把 Inference 提升为 Fact。", {"job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$"}, "reviewer_id": {"type": "string", "description": "审核人标识；正式模式必须与本地已认证身份一致"}, "reviewer_role": {"type": "string", "enum": ["production", "technical", "cost"]}, "decision": {"type": "string", "enum": ["approve", "return", "reject"]}, "checked_items": {"type": "array", "items": {"type": "string", "enum": ["source_drawing", "design_basis", "section_parameters", "units_and_rule", "location_scope"]}}, "note": {"type": "string", "description": "审核备注"}, "evidence_refs": {"type": "array", "items": {"type": "string"}, "description": "项目内证据相对引用"}, "confirm": {"type": "boolean", "description": "必须明确为 true"}}, ["job_id", "reviewer_id", "reviewer_role", "decision", "checked_items", "confirm"], read_only=False, idempotent=False),
@@ -102,9 +119,13 @@ def _capabilities() -> dict[str, Any]:
         "project_root": "PROJECT_PRIVATE_STORAGE",
         "input_formats": ["ASCII DXF"],
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
-        "rule_pack_versions": ["cq-municipal-retaining-v0.1"],
+        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf"]},
+        "disciplines": ["road", "network", "retaining"],
+        "rule_pack_versions": ["cq-municipal-road-v0.1", "cq-municipal-network-v0.1", "cq-municipal-retaining-v0.1"],
         "review_protocol_version": "cq-municipal-review-v0.1",
         "review_states": ["REVIEW_REQUIRED", "REVIEWED_PENDING_AUTHORITY", "FACT_CONFIRMED", "RETURNED", "REJECTED"],
+        "road_scope": ["路面面积/体积", "基层", "底基层", "路基挖方", "路基填方", "路缘石", "人行道铺装"],
+        "network_scope": ["管道长度", "管沟开挖", "垫层", "管道占用体积", "管沟回填", "检查井", "雨水口", "路面恢复"],
         "retaining_scope": ["墙身", "基础", "开挖", "回填", "泄水孔", "反滤层", "锚杆/锚索", "抗滑桩", "喷射混凝土", "钢筋网"],
         "semantic_status": "Hypothesis",
         "calculation_status": "Inference",
@@ -125,6 +146,21 @@ def _inspect(args: dict[str, Any]) -> dict[str, Any]:
         "geometry_inventory": geometry_inventory(document),
         "review_required": bool(document.unsupported_entities),
     }
+
+
+def _inspect_batch(args: dict[str, Any]) -> dict[str, Any]:
+    source_files = args.get("source_files")
+    if not isinstance(source_files, list) or not source_files:
+        raise ValueError("source_files 必须是非空数组")
+    if len(source_files) > 50:
+        raise ValueError("单次最多检查 50 个 DXF 文件")
+    inspections: list[dict[str, Any]] = []
+    for value in source_files:
+        try:
+            inspections.append(_inspect({"source_file": value}))
+        except (OSError, PermissionError, ValueError) as exc:
+            inspections.append({"status": "ERROR", "source_file": str(value), "error": str(exc), "review_required": True})
+    return {"inspections": inspections}
 
 
 def _normalize(args: dict[str, Any]) -> dict[str, Any]:
@@ -151,8 +187,13 @@ def _calculate(args: dict[str, Any]) -> dict[str, Any]:
         "job_id": job_id,
         "project_id": str(args.get("project_id", "")).strip(),
         "source_file": str(source),
-        "rule_pack_version": args.get("rule_pack_version", "cq-municipal-retaining-v0.1"),
-        "sections": args.get("sections", []),
+        "rule_pack_version": args.get("rule_pack_version", ""),
+        "road_rule_pack_version": args.get("road_rule_pack_version", "cq-municipal-road-v0.1"),
+        "network_rule_pack_version": args.get("network_rule_pack_version", "cq-municipal-network-v0.1"),
+        "retaining_rule_pack_version": args.get("retaining_rule_pack_version", "cq-municipal-retaining-v0.1"),
+        "road_sections": args.get("road_sections", []),
+        "network_sections": args.get("network_sections", []),
+        "retaining_sections": args.get("retaining_sections", args.get("sections", [])),
     }, canonical_path=canonical)
     result["source"]["source_file"] = _label(source)
     result["source"]["canonical_file"] = _label(canonical)
@@ -212,9 +253,11 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             return _success(_capabilities())
         if name == "municipal_qto_inspect_dxf":
             return _success(_inspect(args))
+        if name == "municipal_qto_inspect_dxf_batch":
+            return _success(_inspect_batch(args))
         if name == "municipal_qto_normalize_dxf":
             return _success(_normalize(args))
-        if name == "municipal_qto_calculate_retaining":
+        if name in {"municipal_qto_calculate", "municipal_qto_calculate_retaining"}:
             return _success(_calculate(args))
         if name == "municipal_qto_list_jobs":
             return _success(_list_jobs())

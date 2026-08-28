@@ -7,9 +7,12 @@ import re
 import threading
 import uuid
 from datetime import datetime
+from email.parser import BytesParser
+from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from cad_qto.canonical import canonicalize_dxf, sha256_file
@@ -21,6 +24,7 @@ ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 DATA = ROOT / "data"
 CAD_JOBS = DATA / "cad_jobs"
+CAD_INPUTS = DATA / "cad_inputs"
 HOST = os.environ.get("MUNICIPAL_QTO_HOST", "127.0.0.1").strip() or "127.0.0.1"
 PORT = int(os.environ.get("MUNICIPAL_QTO_PORT", "8765"))
 PROJECT_ID = os.environ.get("MUNICIPAL_QTO_PROJECT_ID", "CQ-MUNICIPAL-CAD-QTO").strip() or "CQ-MUNICIPAL-CAD-QTO"
@@ -44,13 +48,17 @@ def project_info() -> dict[str, str]:
 def capabilities() -> dict:
     return {
         "server": "municipal-cad-qto",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "input_formats": ["ASCII DXF"],
+        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf"]},
         "canonical_output": "ASCII DXF（保守实体子集）",
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
-        "rule_pack_versions": ["cq-municipal-retaining-v0.1"],
+        "disciplines": ["road", "network", "retaining"],
+        "rule_pack_versions": ["cq-municipal-road-v0.1", "cq-municipal-network-v0.1", "cq-municipal-retaining-v0.1"],
         "review_protocol_version": REVIEW_PROTOCOL_VERSION,
         "review_states": ["REVIEW_REQUIRED", "REVIEWED_PENDING_AUTHORITY", "FACT_CONFIRMED", "RETURNED", "REJECTED"],
+        "road_scope": ["路面面积/体积", "基层", "底基层", "路基挖方", "路基填方", "路缘石", "人行道铺装"],
+        "network_scope": ["管道长度", "管沟开挖", "垫层", "管道占用体积", "管沟回填", "检查井", "雨水口", "路面恢复"],
         "retaining_scope": ["墙身", "基础", "开挖", "回填", "泄水孔", "反滤层", "锚杆/锚索", "抗滑桩", "喷射混凝土", "钢筋网"],
         "semantic_status": "Hypothesis",
         "calculation_status": "Inference",
@@ -81,6 +89,19 @@ def project_path(value: str, *, must_exist: bool = True) -> Path:
     if must_exist and (not resolved.exists() or not resolved.is_file()):
         raise ValueError(f"图纸文件不存在：{raw}")
     return resolved
+
+
+def project_paths(values: object) -> list[Path]:
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, list) or not values:
+        raise ValueError("至少需要一个项目内 DXF 文件")
+    if len(values) > 50:
+        raise ValueError("单次最多录入 50 个 DXF 文件")
+    paths = [project_path(value) for value in values]
+    if any(path.suffix.lower() != ".dxf" for path in paths):
+        raise ValueError("当前文件入口只接受 .dxf")
+    return paths
 
 
 def path_label(value: str | Path) -> str:
@@ -137,8 +158,26 @@ def list_jobs() -> list[dict]:
     return jobs
 
 
+def list_input_files() -> list[dict]:
+    files: list[dict] = []
+    if not CAD_INPUTS.exists():
+        return files
+    for source in sorted(CAD_INPUTS.glob("*.dxf"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            files.append({
+                "source_file": path_label(source),
+                "original_name": source.name.split("-", 1)[-1],
+                "size_bytes": source.stat().st_size,
+                "source_sha256": sha256_file(source),
+                "created_at": datetime.fromtimestamp(source.stat().st_mtime).isoformat(timespec="seconds"),
+            })
+        except OSError:
+            continue
+    return files
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MunicipalCadQto/0.2"
+    server_version = "MunicipalCadQto/0.3"
 
     def log_message(self, fmt: str, *args) -> None:
         print(fmt % args)
@@ -166,6 +205,35 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("请求体必须是 JSON 对象")
         return payload
 
+    def read_uploads(self) -> list[tuple[str, bytes]]:
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.lower().startswith("multipart/form-data"):
+            raise ValueError("文件录入必须使用 multipart/form-data")
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("Content-Length 不合法") from exc
+        if length <= 0 or length > 50 * 1024 * 1024:
+            raise ValueError("文件录入总大小必须在 1B 到 50MB 之间")
+        raw = self.rfile.read(length)
+        envelope = (
+            f"Content-Type: {content_type}\r\n"
+            "MIME-Version: 1.0\r\n"
+            "\r\n"
+        ).encode("utf-8") + raw
+        message = BytesParser(policy=default_email_policy).parsebytes(envelope)
+        uploads: list[tuple[str, bytes]] = []
+        for part in message.iter_parts():
+            filename = part.get_filename()
+            field_name = part.get_param("name", header="content-disposition")
+            if field_name != "files" or not filename:
+                continue
+            payload = part.get_payload(decode=True) or b""
+            uploads.append((filename, payload))
+        if not uploads:
+            raise ValueError("没有读取到文件字段 files")
+        return uploads
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
@@ -181,9 +249,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "不支持的请求"}, HTTPStatus.NOT_FOUND)
             return
         try:
-            body = self.read_json()
             with JOB_LOCK:
-                self.api_post(urlparse(self.path).path, body)
+                path = urlparse(self.path).path
+                if path == "/api/cad/files":
+                    self.upload_cad_files()
+                else:
+                    self.api_post(path, self.read_json())
         except (OSError, QtoJobError, ReviewInputError, ValueError, json.JSONDecodeError) as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:
@@ -217,6 +288,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/cad/jobs":
             self.send_json({"jobs": list_jobs(), "data_classification": "PRIVATE_PROJECT_DATA"})
             return
+        if path == "/api/cad/files":
+            self.send_json({"files": list_input_files(), "data_classification": "PRIVATE_PROJECT_DATA"})
+            return
         if path.startswith("/api/cad/jobs/"):
             job_id = path.rsplit("/", 1)[-1]
             if not re.fullmatch(r"[A-Za-z0-9_-]{4,80}", job_id):
@@ -229,11 +303,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(json.loads(result_path.read_text(encoding="utf-8")))
             return
         if path == "/api/healthz":
-            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": "0.2.0"})
+            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": "0.3.0"})
             return
         self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
 
     def api_post(self, path: str, body: dict) -> None:
+        if path == "/api/cad/inspect-batch":
+            inspections = []
+            for source in project_paths(body.get("source_files")):
+                try:
+                    inspections.append(inspect_dxf(source))
+                except (OSError, ValueError) as exc:
+                    inspections.append({"status": "ERROR", "source_file": path_label(source), "error": str(exc), "review_required": True})
+            self.send_json({"ok": True, "inspections": inspections})
+            return
         if path == "/api/cad/inspect":
             source = project_path(body.get("source_file"))
             self.send_json({"ok": True, "inspection": inspect_dxf(source)})
@@ -247,34 +330,72 @@ class Handler(BaseHTTPRequestHandler):
             manifest["canonical_file"] = path_label(output)
             self.send_json({"ok": True, "manifest": manifest})
             return
-        if path == "/api/cad/retaining":
-            self.create_cad_job(body)
+        if path in {"/api/cad/calculate", "/api/cad/retaining"}:
+            self.create_cad_jobs(body)
             return
         if path.startswith("/api/cad/jobs/") and path.endswith("/review"):
             self.review_cad_job(path.rsplit("/", 2)[-2], body)
             return
         self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
 
-    def create_cad_job(self, body: dict) -> None:
-        source = project_path(body.get("source_file"))
-        if source.suffix.lower() != ".dxf":
-            raise ValueError("当前工具只接受 .dxf")
-        job_id = safe_job_id(body.get("job_id"))
-        CAD_JOBS.mkdir(parents=True, exist_ok=True)
-        canonical_path = CAD_JOBS / f"{job_id}.canonical.dxf"
-        result = run_job({
-            "job_id": job_id,
-            "project_id": PROJECT_ID,
-            "source_file": str(source),
-            "rule_pack_version": body.get("rule_pack_version", "cq-municipal-retaining-v0.1"),
-            "sections": body.get("sections", []),
-        }, canonical_path=canonical_path)
-        result["source"]["source_file"] = path_label(source)
-        result["source"]["canonical_file"] = path_label(canonical_path)
-        result_file = CAD_JOBS / f"{job_id}.json"
-        write_job_atomic(result_file, result)
-        summary = job_summary(result, path_label(result_file))
-        self.send_json({"ok": True, "job": result, "summary": summary}, HTTPStatus.CREATED)
+    def upload_cad_files(self) -> None:
+        CAD_INPUTS.mkdir(parents=True, exist_ok=True)
+        stored: list[dict[str, Any]] = []
+        created_paths: list[Path] = []
+        try:
+            for original_name, payload in self.read_uploads():
+                filename = Path(original_name).name
+                if Path(filename).suffix.lower() != ".dxf":
+                    raise ValueError(f"不支持的文件类型：{filename}；当前只接受 .dxf")
+                if not payload:
+                    raise ValueError(f"文件为空：{filename}")
+                safe_name = re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]+", "_", Path(filename).stem).strip("._") or "drawing"
+                target = CAD_INPUTS / f"{uuid.uuid4().hex[:10]}-{safe_name}.dxf"
+                target.write_bytes(payload)
+                created_paths.append(target)
+                inspection = inspect_dxf(target)
+                stored.append({"source_file": path_label(target), "original_name": filename, "size_bytes": len(payload), "source_sha256": inspection["source_sha256"], "status": inspection["status"]})
+        except Exception:
+            for path in created_paths:
+                path.unlink(missing_ok=True)
+            raise
+        self.send_json({"ok": True, "files": stored, "data_classification": "PRIVATE_PROJECT_DATA"}, HTTPStatus.CREATED)
+
+    def create_cad_jobs(self, body: dict) -> None:
+        source_values = body.get("source_files")
+        if source_values is None:
+            source_values = [body.get("source_file")]
+        sources = project_paths(source_values)
+        if len(sources) > 1 and body.get("job_id"):
+            base_job_id = safe_job_id(body.get("job_id"))
+        else:
+            base_job_id = ""
+        results: list[dict[str, Any]] = []
+        for index, source in enumerate(sources, start=1):
+            job_id = safe_job_id(base_job_id) if len(sources) == 1 else safe_job_id(f"{base_job_id or 'CAD'}-{index:03d}-{uuid.uuid4().hex[:6].upper()}")
+            CAD_JOBS.mkdir(parents=True, exist_ok=True)
+            canonical_path = CAD_JOBS / f"{job_id}.canonical.dxf"
+            result = run_job({
+                "job_id": job_id,
+                "project_id": PROJECT_ID,
+                "source_file": str(source),
+                "rule_pack_version": body.get("rule_pack_version", ""),
+                "road_rule_pack_version": body.get("road_rule_pack_version", "cq-municipal-road-v0.1"),
+                "network_rule_pack_version": body.get("network_rule_pack_version", "cq-municipal-network-v0.1"),
+                "retaining_rule_pack_version": body.get("retaining_rule_pack_version", "cq-municipal-retaining-v0.1"),
+                "road_sections": body.get("road_sections", []),
+                "network_sections": body.get("network_sections", []),
+                "retaining_sections": body.get("retaining_sections", body.get("sections", [])),
+            }, canonical_path=canonical_path)
+            result["source"]["source_file"] = path_label(source)
+            result["source"]["canonical_file"] = path_label(canonical_path)
+            result_file = CAD_JOBS / f"{job_id}.json"
+            write_job_atomic(result_file, result)
+            results.append({"job": result, "summary": job_summary(result, path_label(result_file))})
+        if len(results) == 1:
+            self.send_json({"ok": True, **results[0]}, HTTPStatus.CREATED)
+        else:
+            self.send_json({"ok": True, "jobs": [item["job"] for item in results], "summaries": [item["summary"] for item in results], "count": len(results)}, HTTPStatus.CREATED)
 
     def review_cad_job(self, job_id: str, body: dict) -> None:
         safe_job_id(job_id)
@@ -293,6 +414,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     DATA.mkdir(exist_ok=True)
     CAD_JOBS.mkdir(exist_ok=True)
+    CAD_INPUTS.mkdir(exist_ok=True)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"重庆市政 CAD 工程量计算服务运行中：http://{HOST}:{PORT}")
     try:

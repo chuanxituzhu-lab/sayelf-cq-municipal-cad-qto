@@ -23,7 +23,7 @@ REQUIRED_CHECKS = (
 CHECK_LABELS = {
     "source_drawing": "原始图纸与版本",
     "design_basis": "设计说明与依据",
-    "section_parameters": "挡护断面参数",
+    "section_parameters": "专业参数与断面",
     "units_and_rule": "单位与规则版本",
     "location_scope": "工程部位与范围",
 }

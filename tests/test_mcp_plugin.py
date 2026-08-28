@@ -71,7 +71,9 @@ class McpPluginTests(unittest.TestCase):
         self.assertEqual(len(responses), 4, completed.stdout)
         self.assertEqual(responses[0]["result"]["protocolVersion"], "2024-11-05")
         names = {tool["name"] for tool in responses[1]["result"]["tools"]}
-        self.assertEqual(len(names), 7)
+        self.assertEqual(len(names), 9)
+        self.assertIn("municipal_qto_calculate", names)
+        self.assertIn("municipal_qto_inspect_dxf_batch", names)
         self.assertIn("municipal_qto_calculate_retaining", names)
         self.assertIn("municipal_qto_review_job", names)
         capabilities = json.loads(responses[2]["result"]["content"][0]["text"])

@@ -17,8 +17,8 @@
 使用 `mcp_server.py`。首个调用顺序固定为：
 
 ```text
-capabilities → inspect_dxf → normalize_dxf（可选）
-→ 人工确认断面 → calculate_retaining → get_job
+capabilities → inspect_dxf / inspect_dxf_batch → normalize_dxf（可选）
+→ 人工确认道路 / 管网 / 挡护参数 → calculate → get_job
 ```
 
 ### Codex 本地插件

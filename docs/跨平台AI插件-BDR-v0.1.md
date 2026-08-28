@@ -6,7 +6,7 @@
 
 ## 1. Idea / real task
 
-让不同 AI 工作台通过统一工具协议调用本地市政图纸算量核心：识别 DXF 几何、生成标准化 DXF、计算挡护结构草稿、读取作业结果和审核证据。AI 负责发现、编排、解释和提醒；几何规则、哈希、状态、权限和最终事实仍由项目本地系统负责。
+让不同 AI 工作台通过统一工具协议调用本地市政图纸算量核心：识别 DXF 几何、生成标准化 DXF、计算道路/管网/挡护工程量草稿、读取作业结果和审核证据。AI 负责发现、编排、解释和提醒；几何规则、哈希、状态、权限和最终事实仍由项目本地系统负责。
 
 ## 2. Closest existing projects or capabilities
 
@@ -19,7 +19,7 @@
 - [百炼自定义 MCP](https://help.aliyun.com/zh/model-studio/custom-mcp)：支持自行开发 MCP，使用脚本部署为 npx/uvx，或通过 http 接入远程 MCP。
 - [扣子基于 MCP 创建插件](https://docs.coze.cn/guides_create_a_plugin_based_on_mcp)：支持由已有 MCP 服务创建自定义插件；流式插件另有 SSE 协议要求。
 
-现有本地核心已经具备 DXF 标准化、挡护结构确定性计算、证据和审核状态；缺口是标准 MCP 工具层、宿主安装适配和跨平台安全说明。
+现有本地核心已经具备 DXF 标准化、道路/管网/挡护确定性计算、证据和审核状态；缺口是标准 MCP 工具层、宿主安装适配和跨平台安全说明。
 
 ## 3. Step 0 decision
 
@@ -38,7 +38,7 @@
 ## 5. Success measure and required evidence
 
 1. MCP STDIO 完成 `initialize → tools/list → tools/call` 冒烟测试。
-2. 至少验证 `capabilities`、`inspect_dxf`、`normalize_dxf`、`calculate_retaining`、`list_jobs`、`get_job` 六个工具。
+2. 至少验证 `capabilities`、`inspect_dxf`、`inspect_dxf_batch`、`normalize_dxf`、`calculate`、`list_jobs`、`get_job` 七类核心工具。
 3. Codex/Claude Code/WorkBuddy 的配置文件可被静态校验，且调用同一份本地核心。
 4. 百炼/扣子/豆包提供可复制的接入模板，但在未完成私有部署和数据合规审批前不宣称已完成生产接入。
 5. 所有测试使用合成图纸；真实重庆项目需另行做脱敏双算和人工验收。
@@ -57,7 +57,8 @@ MCP 工具：
 - `municipal_qto_capabilities`：读取支持范围、规则版本、数据边界；
 - `municipal_qto_inspect_dxf`：只读解析实体、图层和告警；
 - `municipal_qto_normalize_dxf`：在项目私有目录内生成标准化 DXF；
-- `municipal_qto_calculate_retaining`：依据人工确认断面参数生成挡护结构算量作业；
+- `municipal_qto_calculate`：依据人工确认的道路、管网、挡护参数生成综合算量作业；
+- `municipal_qto_calculate_retaining`：旧版挡护调用兼容入口；
 - `municipal_qto_list_jobs`：列出本项目作业摘要；
 - `municipal_qto_get_job`：读取完整作业、公式、证据和审核状态。
 

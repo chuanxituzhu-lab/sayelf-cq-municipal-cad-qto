@@ -164,6 +164,7 @@ def calculate_retaining_sections(sections: list[dict[str, Any]], source_manifest
         total = totals.setdefault(quantity["item_code"], {"item_code": quantity["item_code"], "item": quantity["item"], "unit": quantity["unit"], "quantity": 0.0})
         total["quantity"] = _rounded(Decimal(str(total["quantity"])) + Decimal(str(quantity["quantity"])))
     return {
+        "discipline": "retaining",
         "rule_pack_version": rule_pack_version,
         "status": "CALCULATED",
         "review_required": True,
