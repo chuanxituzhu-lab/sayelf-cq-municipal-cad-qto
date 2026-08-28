@@ -96,4 +96,3 @@ class DingTalkConfig:
         if not isinstance(data, dict):
             raise DingTalkAuthError("钉钉身份服务返回格式不正确")
         return data
-

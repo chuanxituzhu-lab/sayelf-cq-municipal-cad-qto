@@ -8,7 +8,7 @@
 
 | 核心项 | 统一口径 |
 |---|---|
-| 核心命名 | Sayelf 市政造价闭环；GitHub 仓库：[sayelf-municipal-cost-loop](https://github.com/chuanxituzhu-lab/sayelf-municipal-cost-loop) |
+| 核心命名 | Sayelf 重庆市政 CAD 工程量计算；GitHub 仓库：[sayelf-cq-municipal-cad-qto](https://github.com/chuanxituzhu-lab/sayelf-cq-municipal-cad-qto) |
 | 项目模式 | 一个项目部、一套项目数据、一个统一入口；不做多项目混用 |
 | 核心目标 | 岗位任务 → 岗位成果 → 现场证据 → 生产/技术审核 → 造价验证 |
 | 数据中心 | 项目私有根目录中的 `data/db.json`、`data/evidence/`、`data/cad_jobs/` |
@@ -21,7 +21,7 @@
 | 身份安全 | 正式模式必须钉钉企业实名授权、项目成员匹配和岗位归口；不使用共享账号或初始密码 |
 | 当前边界 | 单项目轻量 MVP；图纸算量当前支持 ASCII DXF，结果必须人工审核，不自动入账 |
 
-仓库命名检索与取舍记录见 [仓库命名决策-v0.1.md](docs/仓库命名决策-v0.1.md)。
+仓库命名检索与取舍记录见 [仓库命名决策-sayelf-cq-municipal-cad-qto-v0.1.md](docs/仓库命名决策-sayelf-cq-municipal-cad-qto-v0.1.md)。
 
 最短使用路径：
 

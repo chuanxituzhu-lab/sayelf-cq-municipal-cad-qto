@@ -41,4 +41,3 @@ def canonicalize_dxf(source_path: str | Path, canonical_path: str | Path) -> dic
         "warnings": warnings,
         "geometry_inventory": inventory,
     }
-

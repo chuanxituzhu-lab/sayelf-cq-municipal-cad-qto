@@ -59,4 +59,3 @@ def run_job_file(input_path: str | Path, output_path: str | Path) -> dict[str, A
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
-

@@ -6,7 +6,7 @@
 
 完整的“一个项目部、一套数据”部署和日常使用步骤见项目根目录 [README.md](../../README.md) 的“单个项目部部署与使用手册”章节；本文件专门说明 AI 宿主插件接入。
 
-本插件所在项目当前仓库为 [`sayelf-municipal-cost-loop`](https://github.com/chuanxituzhu-lab/sayelf-municipal-cost-loop)；插件自身继续使用 `municipal-cad-qto` 作为兼容标识。
+本插件所在项目当前仓库为 [`sayelf-cq-municipal-cad-qto`](https://github.com/chuanxituzhu-lab/sayelf-cq-municipal-cad-qto)；插件自身继续使用 `municipal-cad-qto` 作为兼容标识。
 
 ## 能做什么
 
