@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>项目设置</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><div class="eyebrow">管理员工作台 · 本地演示版</div><h1>项目设置与人员归口</h1></div>
+    <div class="top-actions"><a class="ghost link-button" href="/">返回项目</a></div>
+  </header>
+  <main class="content admin-content">
+    <section class="panel">
+      <div class="panel-title"><h2>项目基础信息</h2><span class="muted">正式版由钉钉管理员身份保护</span></div>
+      <form id="projectForm" class="admin-form-grid">
+        <label>项目名称<input name="project_name" required></label>
+        <label>合同编号<input name="contract_no"></label>
+        <label>造价系统项目编号<input name="cost_system_project_no"></label>
+        <div class="form-footer"><span></span><button class="primary" type="submit">保存项目</button></div>
+      </form>
+      <div id="projectMessage" class="form-message"></div>
+    </section>
+    <section class="panel">
+      <div class="panel-title"><h2>项目成员与岗位</h2><span class="muted">岗位决定管理归口和数据范围</span></div>
+      <form id="memberForm" class="admin-form-grid">
+        <label>钉钉用户 ID<input name="user_id" placeholder="正式版使用钉钉稳定用户ID" required></label>
+        <label>姓名<input name="user_name" required></label>
+        <label>岗位<select name="role_code" id="adminRoleSelect"></select></label>
+        <label class="check-field"><input type="checkbox" name="real_name_verified"> 项目管理员已完成实名复核</label>
+        <label class="check-field"><input type="checkbox" name="active" checked> 项目成员有效</label>
+        <div class="form-footer"><span></span><button class="primary" type="submit">新增/更新成员</button></div>
+      </form>
+      <div id="memberMessage" class="form-message"></div>
+      <div id="membersTable"></div>
+    </section>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

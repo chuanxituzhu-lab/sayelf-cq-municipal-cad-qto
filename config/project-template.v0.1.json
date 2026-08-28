@@ -1,0 +1,37 @@
+{
+  "template_version": "0.1",
+  "project_mode": "single_project",
+  "identity_provider": "dingtalk",
+  "ai_entry": "qwen_project_connector",
+  "roles": [
+    {"code": "project_manager", "name": "项目经理", "line": "integrated", "scope": "PROJECT"},
+    {"code": "production_manager", "name": "生产经理", "line": "production", "scope": "LINE"},
+    {"code": "technical_lead", "name": "技术负责人", "line": "technical", "scope": "LINE"},
+    {"code": "cost_manager", "name": "造价经理", "line": "cost", "scope": "PROJECT"},
+    {"code": "construction_survey", "name": "施工员/测量员", "line": "production", "scope": "SELF", "categories": ["施工", "测量"]},
+    {"code": "material", "name": "材料员", "line": "production", "scope": "SELF"},
+    {"code": "safety", "name": "安全员", "line": "production", "scope": "SELF"},
+    {"code": "quality", "name": "质量员", "line": "technical", "scope": "SELF"},
+    {"code": "laboratory", "name": "实验员", "line": "technical", "scope": "SELF"},
+    {"code": "document_control", "name": "资料员", "line": "technical", "scope": "SELF"},
+    {"code": "admin_logistics", "name": "行政/后勤", "line": "support", "scope": "SELF", "categories": ["行政", "后勤"]}
+  ],
+  "states": [
+    "待填报",
+    "已填报",
+    "待本线审核",
+    "待交叉验证",
+    "待造价验证",
+    "证据不足",
+    "数据冲突",
+    "退回补证",
+    "验证合格",
+    "已进入造价系统"
+  ],
+  "data_boundary": {
+    "raw_data_storage": "private_project_storage",
+    "cost_fact_system": "existing_cost_system",
+    "public_network_upload": false,
+    "cross_project_access": false
+  }
+}

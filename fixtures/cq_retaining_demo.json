@@ -1,0 +1,33 @@
+{
+  "project_id": "CQ-DEMO-001",
+  "source_file": "fixtures/cq_retaining_demo.dxf",
+  "rule_pack_version": "cq-municipal-retaining-v0.1",
+  "sections": [
+    {
+      "section_id": "R-001",
+      "station_start": "K0+000",
+      "station_end": "K0+030",
+      "length_m": 30,
+      "wall_type": "重力式挡墙",
+      "wall_material": "片石混凝土",
+      "wall_height_m": 4,
+      "wall_base_width_m": 2.2,
+      "wall_top_width_m": 0.6,
+      "foundation_width_m": 2.4,
+      "foundation_thickness_m": 0.5,
+      "excavation_area_m2_per_m": 3,
+      "backfill_area_m2_per_m": 2,
+      "drainage_hole_spacing_m": 5,
+      "filter_area_m2_per_m": 0.8,
+      "anchor_spacing_m": 10,
+      "anchor_rows": 2,
+      "anchor_length_m": 8,
+      "pile_count": 4,
+      "pile_width_m": 0.8,
+      "pile_depth_m": 0.8,
+      "pile_length_m": 6,
+      "shotcrete_area_m2_per_m": 0.5,
+      "shotcrete_thickness_m": 0.1
+    }
+  ]
+}

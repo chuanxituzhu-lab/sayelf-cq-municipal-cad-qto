@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "municipal-cad-qto": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["./mcp_server.py"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

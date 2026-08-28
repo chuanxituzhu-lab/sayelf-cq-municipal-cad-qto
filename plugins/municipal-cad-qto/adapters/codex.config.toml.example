@@ -1,0 +1,8 @@
+# 复制到 Codex 的 MCP 配置中，替换为本机实际路径。
+# 不要把真实项目路径、密钥或图纸内容提交到公共仓库。
+
+[mcp_servers.municipal_cad_qto]
+command = "python"
+args = ["C:/path/to/project/plugins/municipal-cad-qto/mcp_server.py"]
+cwd = "C:/path/to/project/plugins/municipal-cad-qto"
+env = { MUNICIPAL_QTO_PROJECT_ROOT = "C:/path/to/project" }

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>市政工程岗位成果闭环</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">单项目闭环系统 · 本地演示版</div>
+      <h1 id="projectName">加载项目中…</h1>
+    </div>
+    <div class="top-actions">
+      <label class="role-picker">当前演示岗位
+        <select id="roleSelect"></select>
+      </label>
+      <a class="ghost link-button" href="/admin.html">项目设置</a>
+      <button class="ghost" id="resetBtn">重置演示数据</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <button class="nav-btn active" data-view="dashboard">项目总览</button>
+      <button class="nav-btn" data-view="submit">提交岗位成果</button>
+      <button class="nav-btn" data-view="records">成果与审核</button>
+      <button class="nav-btn" data-view="cad">图纸算量</button>
+      <button class="nav-btn" data-view="report">周报/月报</button>
+      <div class="sidebar-note">
+        <strong>接入方式</strong>
+        <p>正式版从钉钉进入千问，后台自动匹配项目、岗位和权限。当前页面用于先验证业务闭环。</p>
+      </div>
+    </aside>
+
+    <section class="content">
+      <section class="view active" id="view-dashboard">
+        <div class="section-heading">
+          <div><span class="eyebrow">项目驾驶舱</span><h2>今天先看闭环是否顺畅</h2></div>
+          <button class="primary" data-go="submit">提交一条成果</button>
+        </div>
+        <div class="metric-grid" id="metrics"></div>
+        <div class="two-col">
+          <div class="panel"><div class="panel-title"><h3>我的任务</h3><span class="muted">按当前岗位显示</span></div><div id="myTasks"></div></div>
+          <div class="panel"><div class="panel-title"><h3>闭环状态</h3><span class="muted">生产 → 技术 → 造价</span></div><div class="flow"><span>岗位成果</span><i>→</i><span>生产审核</span><i>→</i><span>技术审核</span><i>→</i><span class="highlight">造价验证</span></div><div class="status-note" id="statusNote"></div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-submit">
+        <div class="section-heading"><div><span class="eyebrow">岗位成果</span><h2>提交本周/本月工作成果</h2></div></div>
+        <form class="panel form" id="recordForm">
+          <div class="form-grid">
+            <label>关联任务<select name="task_id" id="taskSelect" required></select></label>
+            <label>周期<select name="period"><option>本周</option><option>本月</option></select></label>
+            <label>工作类别<select name="work_category" id="categorySelect"><option>施工</option></select></label>
+            <label>工作日期<input type="date" name="work_date" required></label>
+            <label>工程部位<input name="location" placeholder="例如：K12+000-K12+080" /></label>
+            <label>实际数量<input name="actual_quantity" inputmode="decimal" placeholder="例如：80" /></label>
+            <label>单位<input name="unit" placeholder="m / m³ / 项" /></label>
+          </div>
+          <label>成果说明<textarea name="description" rows="5" required placeholder="填写本期完成内容、问题、处理结果和下一步计划"></textarea></label>
+          <label class="upload">现场照片/证据<input type="file" name="evidence" id="evidenceInput" accept="image/*,.pdf" capture="environment" multiple><small>手机端可直接拍照，最多 5 个文件。</small></label>
+          <div class="form-footer"><span class="muted">提交后进入本线审核，不会直接进入造价系统。</span><button class="primary" type="submit">提交成果</button></div>
+          <div id="formMessage" class="form-message"></div>
+        </form>
+      </section>
+
+      <section class="view" id="view-records">
+        <div class="section-heading"><div><span class="eyebrow">成果与审核</span><h2>看清每一条记录走到哪一步</h2></div><button class="ghost" id="refreshBtn">刷新</button></div>
+        <div class="panel"><div id="recordsList"></div></div>
+      </section>
+
+      <section class="view" id="view-cad">
+        <div class="section-heading"><div><span class="eyebrow">CAD 工程量草稿</span><h2>先算清挡护结构，再进入人工复核</h2></div></div>
+        <form class="panel form" id="cadForm">
+          <label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>当前演示只读取项目目录内的 ASCII DXF；正式版改为私有文件选择器，不接受公开链接。</small></label>
+          <label class="cad-sections">挡护结构断面参数<textarea id="cadSections" name="sections_json" rows="18" required></textarea><small>图层识别只给候选提示；工程量必须依据人工确认的断面参数计算。结果不会直接进入造价系统。</small></label>
+          <div class="form-footer"><span class="muted">规则包：cq-municipal-retaining-v0.1 · 结果：Inference / 待人工审核</span><button class="primary" type="submit">执行挡护结构算量</button></div>
+          <div id="cadMessage" class="form-message"></div>
+        </form>
+        <div class="panel"><div class="panel-title"><h3>最近一次结果</h3><span class="muted">源图、标准化图、公式和告警可追溯</span></div><pre id="cadOutput" class="report">输入断面参数后执行，结果会显示在这里。</pre></div>
+        <div class="panel cad-review" id="cadReviewPanel" hidden>
+          <div class="panel-title"><h3>人工复核</h3><span class="muted">完成检查后明确提交审核决定</span></div>
+          <div class="form-grid">
+            <label>审核人标识<input id="cadReviewerId" required placeholder="正式模式自动使用已认证身份"></label>
+            <label>审核岗位<select id="cadReviewerRole"><option value="production">生产/施工</option><option value="technical">技术</option><option value="cost">造价</option><option value="project_manager">项目经理</option></select></label>
+          </div>
+          <div class="review-checks">
+            <label class="review-check"><input type="checkbox" data-review-check value="source_drawing">原始图纸与版本</label>
+            <label class="review-check"><input type="checkbox" data-review-check value="design_basis">设计说明与依据</label>
+            <label class="review-check"><input type="checkbox" data-review-check value="section_parameters">挡护断面参数</label>
+            <label class="review-check"><input type="checkbox" data-review-check value="units_and_rule">单位与规则版本</label>
+            <label class="review-check"><input type="checkbox" data-review-check value="location_scope">工程部位与范围</label>
+          </div>
+          <label>审核备注<textarea id="cadReviewNote" rows="3" placeholder="记录核对结论、缺口或退回原因"></textarea></label>
+          <div class="form-footer"><span class="muted">未认证身份只能形成“已审核待身份授权”，不能直接成为 Fact。</span><div class="review-actions"><button class="ghost" id="cadReturnBtn" type="button">退回补充</button><button class="primary" id="cadApproveBtn" type="button">确认通过</button></div></div>
+          <div id="cadReviewMessage" class="form-message"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-report">
+        <div class="section-heading"><div><span class="eyebrow">报告草稿</span><h2>周报/月报</h2></div><button class="primary" id="reportBtn">生成当前摘要</button></div>
+        <div class="panel report" id="reportOutput">点击“生成当前摘要”，系统会根据本地项目记录形成草稿。</div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

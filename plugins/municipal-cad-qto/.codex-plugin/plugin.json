@@ -1,0 +1,19 @@
+{
+  "name": "municipal-cad-qto",
+  "version": "0.2.0",
+  "description": "Local-first Chongqing municipal CAD quantity takeoff with retaining-structure rules, evidence and human review gates.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "重庆市政 CAD 算量",
+    "shortDescription": "本地 DXF 算量与挡护结构审核助手。",
+    "longDescription": "通过本地 MCP 工具调用确定性 DXF 标准化、挡护结构工程量计算、公式和证据链；AI 只负责辅助，不直接形成造价事实。",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": ["请先检查图纸与输入，再生成带公式、证据和人工审核状态的工程量草稿。"]
+  },
+  "mcpServers": "./.mcp.json"
+}

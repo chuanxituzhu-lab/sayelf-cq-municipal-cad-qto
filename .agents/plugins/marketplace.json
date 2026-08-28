@@ -1,0 +1,20 @@
+{
+  "name": "municipal-project",
+  "interface": {
+    "displayName": "市政造价数字化（本地）"
+  },
+  "plugins": [
+    {
+      "name": "municipal-cad-qto",
+      "source": {
+        "source": "local",
+        "path": "./plugins/municipal-cad-qto"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

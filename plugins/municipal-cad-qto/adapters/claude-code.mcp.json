@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "municipal-cad-qto": {
+      "command": "${MUNICIPAL_QTO_PYTHON:-python}",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp_server.py"],
+      "env": {
+        "MUNICIPAL_QTO_PROJECT_ROOT": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

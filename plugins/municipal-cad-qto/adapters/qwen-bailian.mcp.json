@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "municipal-cad-qto": {
+      "type": "streamableHttp",
+      "url": "https://YOUR-PRIVATE-MCP-GATEWAY/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MUNICIPAL_QTO_HTTP_TOKEN}"
+      }
+    }
+  }
+}

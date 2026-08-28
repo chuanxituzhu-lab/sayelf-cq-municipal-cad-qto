@@ -1,0 +1,8 @@
+{
+  "name": "municipal-cad-qto",
+  "description": "Local-first Chongqing municipal CAD quantity takeoff with retaining-structure rules, evidence and human review gates.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Local project"
+  }
+}
