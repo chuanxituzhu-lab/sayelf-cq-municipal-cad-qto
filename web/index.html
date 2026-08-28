@@ -3,159 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#102f3a">
-  <title>市政工程岗位成果闭环演示项目</title>
+  <meta name="theme-color" content="#132d3a">
+  <title>重庆市政 CAD 工程量计算（造价算量）</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="app-shell">
-    <header class="appbar">
-      <div class="brand-block">
-        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-        <div>
-          <div class="eyebrow">市政工程岗位成果闭环</div>
-          <h1 id="projectName">加载项目中…</h1>
-        </div>
-      </div>
-      <div class="app-actions">
-        <span class="local-pill"><i></i> 本地工作区</span>
-        <label class="role-picker">当前岗位
-          <select id="roleSelect" aria-label="当前演示岗位"></select>
-        </label>
-        <a class="button button-quiet" href="/admin.html">项目设置</a>
-        <button class="button button-quiet" id="resetBtn" type="button">重置演示</button>
-      </div>
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><div class="brand-kicker">SAYELF / CAD QTO</div><h1 id="projectName">重庆市政 CAD 工程量计算（造价算量）</h1></div></div>
+      <div class="top-status"><span class="local-badge"><i></i> 本地私有算量</span><span id="ruleVersion">规则包读取中…</span></div>
     </header>
 
-    <div class="workspace">
+    <div class="shell-body">
       <aside class="sidebar">
-        <div class="project-card">
-          <div class="project-card-label">当前项目</div>
-          <strong id="projectCardName">市政工程岗位成果闭环演示项目</strong>
-          <span id="projectCardId">项目编号加载中…</span>
-        </div>
-        <div class="nav-label">工作面</div>
-        <nav class="nav-list" aria-label="项目工作面">
-          <button class="nav-btn active" data-view="dashboard"><span class="nav-index">01</span><span><b>项目总览</b><small>今天先做什么</small></span></button>
-          <button class="nav-btn" data-view="submit"><span class="nav-index">02</span><span><b>岗位成果</b><small>提交现场成果</small></span></button>
-          <button class="nav-btn" data-view="records"><span class="nav-index">03</span><span><b>成果审核</b><small>证据走到哪一步</small></span></button>
-          <button class="nav-btn" data-view="cad"><span class="nav-index">04</span><span><b>CAD 挡护算量</b><small>识别、计算、复核</small></span></button>
-          <button class="nav-btn" data-view="report"><span class="nav-index">05</span><span><b>报告草稿</b><small>形成周报/月报</small></span></button>
+        <div class="scope-card"><span>当前工具</span><strong>CAD 工程量计算</strong><small>面向造价人员的图纸核算工作台</small></div>
+        <div class="nav-caption">算量流程</div>
+        <nav class="nav" aria-label="CAD 算量工作区">
+          <button class="nav-button active" data-view="dashboard"><b>01</b><span><strong>算量工作台</strong><small>输入、状态、最近作业</small></span></button>
+          <button class="nav-button" data-view="inspect"><b>02</b><span><strong>图纸检查</strong><small>图层、实体、文字、告警</small></span></button>
+          <button class="nav-button" data-view="calculate"><b>03</b><span><strong>挡护结构算量</strong><small>断面确认与确定性计算</small></span></button>
+          <button class="nav-button" data-view="review"><b>04</b><span><strong>结果复核</strong><small>公式、哈希、审核门</small></span></button>
+          <button class="nav-button" data-view="jobs"><b>05</b><span><strong>作业记录</strong><small>本地作业与版本追踪</small></span></button>
         </nav>
-        <div class="boundary-card">
-          <div class="boundary-title"><span class="boundary-dot"></span>证据边界</div>
-          <p>识别结果是 <b>Hypothesis</b>，公式结果是 <b>Inference</b>，人工审核后才可成为 <b>Fact</b>。</p>
-        </div>
+        <div class="boundary"><div><i></i><strong>数据边界</strong></div><p>只读取项目目录内的相对路径。原图和作业结果不会上传到外部网络。</p></div>
       </aside>
 
-      <main class="main-content">
+      <main class="main">
         <section class="view active" id="view-dashboard">
-          <div class="hero-heading">
-            <div>
-              <span class="eyebrow">项目工作面 / 总览</span>
-              <h2>让每一项施工成果，<em>走完审核闭环</em></h2>
-              <p class="lead">现场记录、图纸算量和造价验证共用一套项目状态。先看下一步，再处理待办。</p>
-            </div>
-            <div class="hero-actions">
-              <button class="button button-primary" data-go="submit">提交岗位成果 <span>→</span></button>
-              <button class="button button-outline" data-go="cad">打开 CAD 算量 <span>↗</span></button>
-            </div>
+          <div class="hero"><div><span class="eyebrow">CAD 造价算量 / 工作台</span><h2>把图纸，变成可核对的数量。</h2><p>围绕一张 DXF 完成检查、标准化、挡护结构计算和人工复核。每个数量都带着来源、公式和状态。</p></div><button class="primary" data-go="inspect">开始检查图纸 <span>→</span></button></div>
+          <div class="metric-grid" id="metrics"></div>
+          <div class="process-title"><span>标准工作路径</span><small>确定性规则只在人工确认断面后运行</small></div>
+          <div class="process"><div class="process-step active"><b>01</b><span>输入 DXF</span><small>项目内相对路径</small></div><i>→</i><div class="process-step"><b>02</b><span>检查 / 标准化</span><small>保留源图哈希</small></div><i>→</i><div class="process-step"><b>03</b><span>确认断面</span><small>不补猜尺寸</small></div><i>→</i><div class="process-step"><b>04</b><span>计算工程量</span><small>Inference 草稿</small></div><i>→</i><div class="process-step"><b>05</b><span>人工复核</span><small>才可能成为 Fact</small></div></div>
+          <div class="two-col">
+            <section class="panel quick-panel"><div class="panel-head"><div><span class="eyebrow">快速开始</span><h3>选择一张项目内图纸</h3></div><span class="state-chip">ASCII DXF</span></div><form id="quickInspectForm"><label>DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="quickNormalizeBtn" type="button">生成标准化副本</button></div></form><div id="quickMessage" class="message"></div></section>
+            <section class="panel latest-panel"><div class="panel-head"><div><span class="eyebrow">最近作业</span><h3>本地算量结果</h3></div><button class="text-button" data-go="jobs">查看全部 →</button></div><div id="latestJob"></div></section>
           </div>
-
-          <div class="metrics" id="metrics"></div>
-
-          <div class="section-label"><span>当前闭环</span><small>状态由项目本地数据驱动</small></div>
-          <div class="closure-track">
-            <div class="track-step is-active"><span>01</span><div><b>岗位成果</b><small>提交现场完成情况</small></div></div>
-            <div class="track-line"></div>
-            <div class="track-step"><span>02</span><div><b>生产 / 技术审核</b><small>证据与范围核对</small></div></div>
-            <div class="track-line"></div>
-            <div class="track-step"><span>03</span><div><b>造价验证</b><small>数量与计价依据</small></div></div>
-            <div class="track-line"></div>
-            <div class="track-step"><span>04</span><div><b>可核对结果</b><small>确认后才成为 Fact</small></div></div>
-          </div>
-
-          <div class="dashboard-grid">
-            <section class="panel task-panel">
-              <div class="panel-heading"><div><span class="eyebrow">我的工作面</span><h3>今天先处理这些</h3></div><button class="text-button" data-go="submit">去提交 →</button></div>
-              <div id="myTasks"></div>
-            </section>
-            <section class="panel next-panel">
-              <div class="panel-heading"><div><span class="eyebrow">下一步</span><h3 id="nextTitle">等待项目状态</h3></div><span class="state-badge" id="nextBadge">同步中</span></div>
-              <div id="statusNote" class="next-copy"></div>
-              <div class="next-actions" id="nextActions"></div>
-            </section>
-          </div>
-
-          <div class="dashboard-grid lower-grid">
-            <section class="panel cad-summary-panel">
-              <div class="panel-heading"><div><span class="eyebrow">图纸算量工作面</span><h3>挡护结构识别与计算</h3></div><button class="text-button" data-go="cad">进入工作面 →</button></div>
-              <div id="cadSummary" class="cad-summary"></div>
-            </section>
-            <section class="panel identity-panel">
-              <div class="panel-heading"><div><span class="eyebrow">项目身份</span><h3>当前数据归属</h3></div></div>
-              <div id="projectIdentity" class="identity-list"></div>
-            </section>
-          </div>
+          <section class="panel scope-panel"><div class="panel-head"><div><span class="eyebrow">当前规则范围</span><h3>挡护结构工程量</h3></div><span class="muted">只做几何数量，不套定额和单价</span></div><div id="scopeItems" class="scope-items"></div></section>
         </section>
 
-        <section class="view" id="view-submit">
-          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 岗位成果</span><h2>提交一项可核对的现场成果</h2><p>填写事实、部位和证据，提交后进入本线审核，不会直接进入造价系统。</p></div></div>
-          <form class="panel form-card" id="recordForm">
-            <div class="form-section-title"><span>01</span><div><b>成果基本信息</b><small>关联项目任务，明确发生在哪里、完成了什么</small></div></div>
-            <div class="form-grid">
-              <label>关联任务<select name="task_id" id="taskSelect" required></select></label>
-              <label>周期<select name="period"><option>本周</option><option>本月</option></select></label>
-              <label>工作类别<select name="work_category" id="categorySelect"><option>施工</option></select></label>
-              <label>工作日期<input type="date" name="work_date" required></label>
-              <label>工程部位<input name="location" placeholder="例如：K12+000-K12+080"></label>
-              <label>实际数量<input name="actual_quantity" inputmode="decimal" placeholder="例如：80"></label>
-              <label>单位<input name="unit" placeholder="m / m³ / 项"></label>
-            </div>
-            <div class="form-section-title"><span>02</span><div><b>成果说明与证据</b><small>只填写本岗位可观察、可追溯的内容</small></div></div>
-            <label>成果说明<textarea name="description" rows="6" required placeholder="填写本期完成内容、问题、处理结果和下一步计划"></textarea></label>
-            <label class="upload-box"><span class="upload-icon">＋</span><span><b>添加现场照片或 PDF 证据</b><small>手机端可直接拍照，最多 5 个文件；文件留在本地项目数据目录</small></span><input type="file" name="evidence" id="evidenceInput" accept="image/*,.pdf" capture="environment" multiple></label>
-            <div class="form-footer"><span class="form-hint">提交后：岗位成果 → 本线审核 → 交叉验证 → 造价验证</span><button class="button button-primary" type="submit">提交成果 <span>→</span></button></div>
-            <div id="formMessage" class="form-message" role="status"></div>
-          </form>
+        <section class="view" id="view-inspect">
+          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 图纸检查</span><h2>先看清图纸，再开始算量</h2><p>检查是只读操作；标准化只生成副本，不覆盖原始 DXF。</p></div></div>
+          <section class="panel form-panel"><form id="inspectForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>不接受绝对路径、公开 URL 或项目目录外文件。</small></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="normalizeBtn" type="button">生成标准化 DXF</button></div><div id="inspectMessage" class="message"></div></form></section>
+          <section class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">Observation</span><h3>图纸检查结果</h3></div><span class="state-chip" id="inspectState">等待检查</span></div><div id="inspectionResult" class="result-empty">输入图纸路径并执行检查，结果会显示在这里。</div></section>
         </section>
 
-        <section class="view" id="view-records">
-          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 03 / 成果审核</span><h2>看清每一条记录走到哪一步</h2><p>审核动作会写入项目本地审计账本，角色决定可见范围。</p></div><button class="button button-outline" id="refreshBtn" type="button">刷新状态</button></div>
-          <section class="panel records-card"><div id="recordsList"></div></section>
+        <section class="view" id="view-calculate">
+          <div class="page-heading"><div><span class="eyebrow">工作面 03 / 挡护结构算量</span><h2>人工确认断面，计算工程数量</h2><p>图层识别只提供候选；下方断面参数必须来自图纸、断面表或设计说明。</p></div></div>
+          <div class="notice"><b>计算结果是 Inference</b><span>不会自动进入造价系统。缺少关键尺寸、单位异常或图纸告警时，必须停在人工复核。</span></div>
+          <form class="panel form-panel" id="calculateForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><label class="json-field">人工确认的挡护结构断面参数<textarea id="sectionsInput" name="sections_json" rows="19" required></textarea><small>当前规则包：<code>cq-municipal-retaining-v0.1</code>；支持挡墙、基础、开挖、回填、泄水孔、反滤层、锚杆/锚索、抗滑桩、喷射混凝土、钢筋网。</small></label><div class="button-row"><button class="primary" type="submit">执行挡护结构算量 <span>→</span></button><button class="outline" id="calculateInspectBtn" type="button">先检查图纸</button></div><div id="calculateMessage" class="message"></div></form>
+          <section class="panel result-panel" id="calculationPanel"><div class="panel-head"><div><span class="eyebrow">Inference / 工程量草稿</span><h3>计算结果</h3></div><span class="state-chip warning" id="calculationState">REVIEW_REQUIRED</span></div><div id="calculationResult" class="result-empty">执行算量后显示分项数量、公式和告警。</div></section>
         </section>
 
-        <section class="view" id="view-cad">
-          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 04 / CAD 挡护算量</span><h2>从项目内 DXF 到可复核工程量</h2><p>图层只产生候选提示；工程量必须依据人工确认的断面参数计算。</p></div><div class="cad-status-line" id="cadStatusLine">读取规则包…</div></div>
-          <div class="cad-notice"><span class="notice-icon">!</span><div><b>当前是算量草稿，不是自动入账结果</b><p>结果保留源图哈希、标准化图哈希、规则版本、公式和告警；状态默认为 <strong>REVIEW_REQUIRED</strong>。</p></div></div>
-          <form class="panel form-card cad-form" id="cadForm">
-            <div class="form-section-title"><span>01</span><div><b>输入图纸与人工确认断面</b><small>当前演示仅读取项目目录内 ASCII DXF，不接受公开链接</small></div></div>
-            <label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small class="field-note">统一交换格式：DXF；DWG 转换必须使用项目私有环境中经审查的本地转换器。</small></label>
-            <label class="cad-sections">挡护结构断面参数<textarea id="cadSections" name="sections_json" rows="18" required></textarea><small class="field-note">所有尺寸必须来自图纸、断面表或设计说明；缺失时系统停止该分项计算，不补猜。</small></label>
-            <div class="form-footer"><span class="form-hint">识别：Hypothesis　计算：Inference　结果：待人工审核</span><button class="button button-primary" type="submit">执行挡护结构算量 <span>→</span></button></div>
-            <div id="cadMessage" class="form-message" role="status"></div>
-          </form>
-          <section class="panel result-card"><div class="panel-heading"><div><span class="eyebrow">结果与证据</span><h3>最近一次算量作业</h3></div><span class="state-badge state-warning">REVIEW_REQUIRED</span></div><pre id="cadOutput" class="result-output">输入断面参数后执行，结果会显示在这里。</pre></section>
-          <section class="panel review-card" id="cadReviewPanel" hidden>
-            <div class="panel-heading"><div><span class="eyebrow">人工复核门</span><h3>完成检查后提交审核决定</h3></div><span class="state-badge">需明确确认</span></div>
-            <div class="form-grid review-meta"><label>审核人标识<input id="cadReviewerId" required placeholder="正式模式自动使用已认证身份"></label><label>审核岗位<select id="cadReviewerRole"><option value="production">生产/施工</option><option value="technical">技术</option><option value="cost">造价</option><option value="project_manager">项目经理</option></select></label></div>
-            <div class="review-checks">
-              <label class="review-check"><input type="checkbox" data-review-check value="source_drawing">原始图纸与版本</label>
-              <label class="review-check"><input type="checkbox" data-review-check value="design_basis">设计说明与依据</label>
-              <label class="review-check"><input type="checkbox" data-review-check value="section_parameters">挡护断面参数</label>
-              <label class="review-check"><input type="checkbox" data-review-check value="units_and_rule">单位与规则版本</label>
-              <label class="review-check"><input type="checkbox" data-review-check value="location_scope">工程部位与范围</label>
-            </div>
-            <label>审核备注<textarea id="cadReviewNote" rows="3" placeholder="记录核对结论、缺口或退回原因"></textarea></label>
-            <div class="form-footer"><span class="form-hint">未认证身份只能形成“已审核待身份授权”，不能直接成为 Fact。</span><div class="review-actions"><button class="button button-outline" id="cadReturnBtn" type="button">退回补充</button><button class="button button-primary" id="cadApproveBtn" type="button">确认通过</button></div></div>
-            <div id="cadReviewMessage" class="form-message" role="status"></div>
-          </section>
-          <section class="panel jobs-card"><div class="panel-heading"><div><span class="eyebrow">作业历史</span><h3>本项目 CAD 作业</h3></div><span class="muted">只显示当前项目本地记录</span></div><div id="cadJobs"></div></section>
+        <section class="view" id="view-review">
+          <div class="page-heading"><div><span class="eyebrow">工作面 04 / 结果复核</span><h2>数量可追溯，结论可复核</h2><p>选择一个本地作业，核对来源、设计依据、断面、单位/规则和工程部位。</p></div></div>
+          <section class="panel form-panel"><label>选择算量作业<select id="reviewJobSelect"><option value="">请选择作业</option></select></label><div class="button-row"><button class="outline" id="loadReviewBtn" type="button">读取作业详情</button></div><div id="reviewLoadMessage" class="message"></div></section>
+          <section class="panel result-panel" id="reviewDetailPanel"><div class="panel-head"><div><span class="eyebrow">Evidence</span><h3>作业证据</h3></div><span class="state-chip warning" id="reviewState">等待选择</span></div><div id="reviewDetail" class="result-empty">选择作业后显示结果证据。</div></section>
+          <section class="panel review-form" id="reviewFormPanel" hidden><div class="panel-head"><div><span class="eyebrow">Decision</span><h3>人工复核门</h3></div><span class="muted">通过需要完成全部五项检查</span></div><div class="review-grid"><label>审核人标识<input id="reviewerId" placeholder="正式模式使用本地已认证身份"></label><label>审核岗位<select id="reviewerRole"><option value="cost">造价</option><option value="technical">技术</option><option value="production">生产</option></select></label></div><div class="checks"><label><input type="checkbox" data-check value="source_drawing">原始图纸与版本</label><label><input type="checkbox" data-check value="design_basis">设计说明与依据</label><label><input type="checkbox" data-check value="section_parameters">挡护断面参数</label><label><input type="checkbox" data-check value="units_and_rule">单位与规则版本</label><label><input type="checkbox" data-check value="location_scope">工程部位与范围</label></div><label>审核备注<textarea id="reviewNote" rows="3" placeholder="记录核对结论、缺口或退回原因"></textarea></label><div class="button-row"><button class="outline" id="returnBtn" type="button">退回补充</button><button class="danger" id="rejectBtn" type="button">审核不通过</button><button class="primary" id="approveBtn" type="button">确认通过</button></div><div id="reviewMessage" class="message"></div></section>
         </section>
 
-        <section class="view" id="view-report">
-          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 05 / 报告草稿</span><h2>把项目状态整理成一份可核对摘要</h2><p>报告来自当前角色可见的本地项目记录，生成后仍需人工编辑和确认。</p></div><button class="button button-primary" id="reportBtn" type="button">生成当前摘要 <span>→</span></button></div>
-          <pre class="panel report-output" id="reportOutput">点击“生成当前摘要”，系统会根据本地项目记录形成草稿。</pre>
+        <section class="view" id="view-jobs">
+          <div class="page-heading page-heading-row"><div><span class="eyebrow">工作面 05 / 作业记录</span><h2>所有算量作业都留在本地</h2><p>按源图、规则版本、数量条数和审核状态追踪历史，不覆盖原始图纸。</p></div><button class="outline" id="refreshJobsBtn" type="button">刷新作业</button></div>
+          <section class="panel jobs-panel"><div id="jobsList"></div></section>
         </section>
       </main>
     </div>

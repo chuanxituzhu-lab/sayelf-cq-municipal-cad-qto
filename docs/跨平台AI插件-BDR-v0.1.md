@@ -106,7 +106,7 @@ MCP 工具：
 - `Observation`：MCP 返回的实体、图层、文本、哈希和人工输入；
 - `Inference`：公式推导的数量和汇总；
 - `Hypothesis`：图层/文字产生的构件候选和缺证提醒；
-- `Fact`：生产、技术、造价审核后写入项目闭环的事实。
+- `Fact`：人工完成图纸、断面、规则和数量复核后确认的造价事实。
 
 ## 14. Evolution, validation, canary, version, rollback
 

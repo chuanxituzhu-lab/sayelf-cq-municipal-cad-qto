@@ -11,7 +11,7 @@ from typing import Any
 
 REVIEW_PROTOCOL_VERSION = "cq-municipal-review-v0.1"
 REVIEWER_ID_RE = re.compile(r"^[^\\/\\\\]{2,80}$")
-REVIEW_ROLES = {"production", "technical", "cost", "project_manager"}
+REVIEW_ROLES = {"production", "technical", "cost"}
 DECISIONS = {"approve", "return", "reject"}
 REQUIRED_CHECKS = (
     "source_drawing",
