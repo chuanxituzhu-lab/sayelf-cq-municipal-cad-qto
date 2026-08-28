@@ -1,45 +1,9 @@
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
 let adminState;
-
-async function request(url, options) {
-  const response = await fetch(url, options);
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "请求失败");
-  return payload;
-}
-
-function renderMembers() {
-  $("#membersTable").innerHTML = adminState.members.length ? `<div class="member-table"><div class="member-head"><span>姓名</span><span>岗位</span><span>归口</span><span>范围</span><span>实名</span><span>状态</span></div>${adminState.members.map((member) => `<div class="member-row"><span>${esc(member.user_name)}<small>${esc(member.user_id)}</small></span><span>${esc(adminState.roles.find((role) => role.code === member.role_code)?.name || member.role_code)}</span><span>${esc(member.line)}</span><span>${esc(member.scope)}</span><span class="status ${member.real_name_verified ? "good" : "bad"}">${member.real_name_verified ? "已核验" : "未核验"}</span><span class="status ${member.active ? "good" : "bad"}">${member.active ? "有效" : "停用"}</span></div>`).join("")}</div>` : `<div class="empty">还没有成员</div>`;
-}
-
-async function load() {
-  adminState = await request("/api/admin/bootstrap");
-  const projectForm = $("#projectForm");
-  Object.entries(adminState.project).forEach(([key, value]) => { if (projectForm.elements[key]) projectForm.elements[key].value = value; });
-  $("#adminRoleSelect").innerHTML = adminState.roles.map((role) => `<option value="${esc(role.code)}">${esc(role.name)} · ${esc(role.line)}</option>`).join("");
-  renderMembers();
-}
-
-$("#projectForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const body = Object.fromEntries(new FormData(event.target).entries());
-    await request("/api/admin/project", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-    $("#projectMessage").textContent = "项目基础信息已保存。";
-    await load();
-  } catch (error) { $("#projectMessage").textContent = error.message; }
-});
-
-$("#memberForm").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const body = Object.fromEntries(new FormData(event.target).entries());
-    await request("/api/admin/members", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-    $("#memberMessage").textContent = "项目成员已保存，岗位归口已自动生成。";
-    event.target.reset();
-    await load();
-  } catch (error) { $("#memberMessage").textContent = error.message; }
-});
-
+async function request(url, options) { const response = await fetch(url, options); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "请求失败"); return payload; }
+function renderMembers() { $("#membersTable").innerHTML = adminState.members.length ? `<div class="member-table"><div class="member-head"><span>姓名</span><span>岗位</span><span>归口</span><span>范围</span><span>实名</span><span>状态</span></div>${adminState.members.map((member) => `<div class="member-row"><span>${esc(member.user_name)}<small>${esc(member.user_id)}</small></span><span>${esc(adminState.roles.find((role) => role.code === member.role_code)?.name || member.role_code)}</span><span>${esc(member.line)}</span><span>${esc(member.scope)}</span><span class="status ${member.real_name_verified ? "good" : "bad"}">${member.real_name_verified ? "已核验" : "未核验"}</span><span class="status ${member.active ? "good" : "bad"}">${member.active ? "有效" : "停用"}</span></div>`).join("")}</div>` : `<div class="empty">还没有成员</div>`; }
+async function load() { adminState = await request("/api/admin/bootstrap"); const projectForm = $("#projectForm"); Object.entries(adminState.project).forEach(([key, value]) => { if (projectForm.elements[key]) projectForm.elements[key].value = value; }); $("#adminRoleSelect").innerHTML = adminState.roles.map((role) => `<option value="${esc(role.code)}">${esc(role.name)} · ${esc(role.line)}</option>`).join(""); renderMembers(); }
+$("#projectForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await request("/api/admin/project", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(Object.fromEntries(new FormData(event.target).entries()))}); $("#projectMessage").textContent = "项目基础信息已保存。"; await load(); } catch (error) { $("#projectMessage").textContent = error.message; } });
+$("#memberForm").addEventListener("submit", async (event) => { event.preventDefault(); try { await request("/api/admin/members", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(Object.fromEntries(new FormData(event.target).entries()))}); $("#memberMessage").textContent = "项目成员已保存，岗位归口已自动生成。"; event.target.reset(); await load(); } catch (error) { $("#memberMessage").textContent = error.message; } });
 load().catch((error) => { document.body.innerHTML = `<main style="padding:40px;font-family:system-ui"><h2>管理员页面无法加载</h2><p>${esc(error.message)}</p></main>`; });
