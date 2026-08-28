@@ -15,11 +15,12 @@
 
 插件只复用项目内唯一的 `cad_qto` 核心，不复制第二套规则。部署时必须把 `MUNICIPAL_QTO_PROJECT_ROOT` 指向包含 `cad_qto/`、`data/` 和项目图纸的私有根目录。
 
-## 2. 九个统一工具
+## 2. 十一个统一工具
 
 | 工具 | 作用 | 写入 | 人工门禁 |
 |---|---|---:|---:|
 | `municipal_qto_capabilities` | 读取能力、规则版本和数据边界 | 否 | 否 |
+| `municipal_qto_convert_to_dxf` | 本地把矢量 PDF 或已配置 DWG 转换器输出为 DXF，并保留双哈希 | 是 | 转换告警需复核 |
 | `municipal_qto_inspect_dxf` | 检查单张 DXF 的实体、图层、文字、单位和告警 | 否 | 识别结果为 Hypothesis |
 | `municipal_qto_inspect_dxf_batch` | 批量检查多张 DXF，逐文件返回结果 | 否 | 识别结果为 Hypothesis |
 | `municipal_qto_normalize_dxf` | 生成标准化 DXF 副本 | 是 | 不覆盖原图 |
@@ -28,12 +29,13 @@
 | `municipal_qto_list_jobs` | 列出本地作业摘要 | 否 | 否 |
 | `municipal_qto_get_job` | 读取公式、输入、哈希、告警和审核状态 | 否 | 结果仍是 Inference |
 | `municipal_qto_review_job` | 写入人工复核清单和决定 | 是 | 未认证身份不能提升为 Fact |
+| `municipal_qto_export_job` | 独立导出 Excel/PDF 成果到本地 | 是 | 仍标记审核状态 |
 
 固定调用顺序：
 
 ```text
-capabilities → inspect_dxf / inspect_dxf_batch → normalize_dxf（可选）
-→ 人工确认道路 / 管网 / 挡护参数 → calculate → get_job
+capabilities → convert_to_dxf（PDF/DWG 可选） → inspect_dxf / inspect_dxf_batch → normalize_dxf（可选）
+→ 人工确认道路 / 管网 / 挡护参数 → calculate → get_job → review → export_job（可选）
 ```
 
 ## 3. 各宿主验收矩阵
@@ -57,11 +59,11 @@ python -m unittest discover -s tests -v
 python plugins/municipal-cad-qto/mcp_server.py
 ```
 
-当前证据基线：覆盖插件清单与本地 marketplace、DXF 解析、标准化哈希、道路/管网/挡护确定性计算、单/多文件入口、人工审核状态、MCP STDIO 握手、九工具发现、项目路径越界拒绝、作业本地留痕、HTTP Bearer 鉴权和会话校验；测试数量以当前回归输出为准。
+当前证据基线：覆盖插件清单与本地 marketplace、DXF 解析、PDF 本地矢量转换、标准化哈希、道路/管网/挡护确定性计算、单/多文件入口、人工审核状态、MCP STDIO 握手、十一工具发现、Excel/PDF 导出、项目路径越界拒绝、作业本地留痕、HTTP Bearer 鉴权和会话校验；测试数量以当前回归输出为准。
 
 ## 5. 可信边界
 
-- 当前输入仅为 ASCII DXF；DWG、PDF、IFC、LandXML 不得直接冒充 DXF。
+- 默认输入为 ASCII DXF；PDF 仅作本地矢量图元转换，DWG 依赖本机转换器；扫描 PDF、未安装转换器的 DWG、IFC、LandXML 不得直接冒充 DXF。
 - 图层和文字识别是 `Hypothesis`；公式结果是 `Inference`；人工审核后才可提升为 `Fact`。
 - 真实图纸、合同、照片、人员信息、造价文件只留在项目私有根目录，不上传到公共网络或外部模型。
 - HTTP 非本机绑定必须设置 `MUNICIPAL_QTO_HTTP_TOKEN`，生产环境还要放在企业私有网络或受控网关后。

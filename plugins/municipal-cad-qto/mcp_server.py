@@ -20,19 +20,21 @@ if str(_default_root) not in sys.path:
     sys.path.insert(0, str(_default_root))
 
 from cad_qto.canonical import canonicalize_dxf, sha256_file  # noqa: E402
+from cad_qto.conversion import ConversionError, convert_to_dxf  # noqa: E402
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf  # noqa: E402
+from cad_qto.export import ExportError, export_pdf, export_xlsx  # noqa: E402
 from cad_qto.job import QtoJobError, run_job  # noqa: E402
 from cad_qto.review import ReviewInputError, record_job_review, write_job_atomic  # noqa: E402
 
 
 SERVER_NAME = "municipal-cad-qto"
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.4.0"
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INSTRUCTIONS = (
-    "这是本地优先的重庆市政 CAD 工程量辅助工具，覆盖道路、管网和挡护三类几何算量。只接受项目私有目录内的 ASCII DXF；"
+    "这是本地优先的重庆市政 CAD 工程量辅助工具，覆盖道路、管网和挡护三类几何算量。默认使用 DXF，PDF/DWG 只通过本地转换器生成 DXF；"
     "图层识别是 Hypothesis，公式计算是 Inference，必须人工审核后才能成为 Fact。"
     "不得覆盖原图、不得越权读取项目目录外文件、不得上传真实工程资料。"
-    "复核工具必须明确 confirm=true；未配置本地审核身份时只能记录待授权状态。"
+    "复核工具必须明确 confirm=true；未配置本地审核身份时只能记录待授权状态。成果导出只写入项目私有目录。"
 )
 
 
@@ -100,7 +102,8 @@ CALCULATION_PROPERTIES = {
 
 TOOLS = [
     _tool("municipal_qto_capabilities", "读取本地算量核心的支持范围、规则版本和数据边界。", {}, [], read_only=True, idempotent=True),
-    _tool("municipal_qto_inspect_dxf", "只读检查项目内 ASCII DXF 的支持实体、图层、文字、单位和未支持实体。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}}, ["source_file"], read_only=True, idempotent=True),
+    _tool("municipal_qto_convert_to_dxf", "在本机把项目内 PDF 矢量图元或已安装 DWG 转换器转换为 DXF；DXF 输入不重复转换，始终保留源图哈希。", {"source_file": {"type": "string", "description": "项目根目录内的 PDF、DWG 或 DXF 相对路径"}, "output_file": {"type": "string", "description": "可选，项目根目录内的 DXF 输出相对路径"}}, ["source_file"], read_only=False, idempotent=True),
+    _tool("municipal_qto_inspect_dxf", "只读检查项目内 ASCII DXF 的支持实体、图层、文字、单位和未支持实体。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径；PDF/DWG 先转换"}}, ["source_file"], read_only=True, idempotent=True),
     _tool("municipal_qto_inspect_dxf_batch", "批量只读检查多个项目内 ASCII DXF，单个文件失败不会吞掉其他文件结果。", {"source_files": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}}}, ["source_files"], read_only=True, idempotent=True),
     _tool("municipal_qto_normalize_dxf", "在项目私有目录内生成标准化 DXF 副本，不覆盖原图。", {"source_file": {"type": "string", "description": "项目根目录内的 DXF 相对路径"}, "output_file": {"type": "string", "description": "可选，项目根目录内的输出相对路径"}}, ["source_file"], read_only=False, idempotent=True),
     _tool("municipal_qto_calculate", "按人工确认参数计算道路、管网和挡护结构工程量草稿，并保存带证据的本地作业。至少提供一种专业参数数组。", CALCULATION_PROPERTIES, ["source_file"], read_only=False, idempotent=False),
@@ -108,6 +111,7 @@ TOOLS = [
     _tool("municipal_qto_list_jobs", "列出项目私有目录内的算量作业摘要。", {}, [], read_only=True, idempotent=True),
     _tool("municipal_qto_get_job", "读取指定算量作业的完整公式、输入、哈希、告警和审核状态。", {"job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$"}}, ["job_id"], read_only=True, idempotent=True),
     _tool("municipal_qto_review_job", "按人工确认清单记录算量作业复核；只有本地已认证审核人才能把 Inference 提升为 Fact。", {"job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$"}, "reviewer_id": {"type": "string", "description": "审核人标识；正式模式必须与本地已认证身份一致"}, "reviewer_role": {"type": "string", "enum": ["production", "technical", "cost"]}, "decision": {"type": "string", "enum": ["approve", "return", "reject"]}, "checked_items": {"type": "array", "items": {"type": "string", "enum": ["source_drawing", "design_basis", "section_parameters", "units_and_rule", "location_scope"]}}, "note": {"type": "string", "description": "审核备注"}, "evidence_refs": {"type": "array", "items": {"type": "string"}, "description": "项目内证据相对引用"}, "confirm": {"type": "boolean", "description": "必须明确为 true"}}, ["job_id", "reviewer_id", "reviewer_role", "decision", "checked_items", "confirm"], read_only=False, idempotent=False),
+    _tool("municipal_qto_export_job", "把本地算量作业独立导出为 Excel 或 PDF，输出文件留在项目私有目录。", {"job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{4,80}$"}, "format": {"type": "string", "enum": ["xlsx", "pdf"]}, "output_file": {"type": "string", "description": "可选，项目根目录内的成果文件相对路径"}}, ["job_id", "format"], read_only=False, idempotent=True),
 ]
 
 
@@ -117,9 +121,10 @@ def _capabilities() -> dict[str, Any]:
         "version": SERVER_VERSION,
         "transport": ["stdio", "streamable-http"],
         "project_root": "PROJECT_PRIVATE_STORAGE",
-        "input_formats": ["ASCII DXF"],
+        "input_formats": ["ASCII DXF（默认）", "PDF（本地矢量转 DXF）", "DWG（本地转换器转 DXF）"],
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
-        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf"]},
+        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf", ".pdf", ".dwg"], "default_extension": ".dxf"},
+        "exports": ["xlsx", "pdf"],
         "disciplines": ["road", "network", "retaining"],
         "rule_pack_versions": ["cq-municipal-road-v0.1", "cq-municipal-network-v0.1", "cq-municipal-retaining-v0.1"],
         "review_protocol_version": "cq-municipal-review-v0.1",
@@ -137,7 +142,7 @@ def _capabilities() -> dict[str, Any]:
 def _inspect(args: dict[str, Any]) -> dict[str, Any]:
     source = _path(args.get("source_file"))
     if source.suffix.lower() != ".dxf":
-        raise ValueError("当前工具只接受 .dxf；不要强行把 PDF/IFC/LandXML 当作 DXF")
+        raise ValueError("检查工具需要 DXF；PDF/DWG 请先调用 municipal_qto_convert_to_dxf")
     document = parse_ascii_dxf(source)
     return {
         "status": "PARSED",
@@ -172,6 +177,23 @@ def _normalize(args: dict[str, Any]) -> dict[str, Any]:
     manifest = canonicalize_dxf(source, output)
     manifest["source_file"] = _label(source)
     manifest["canonical_file"] = _label(output)
+    return manifest
+
+
+def _convert(args: dict[str, Any]) -> dict[str, Any]:
+    source = _path(args.get("source_file"))
+    if source.suffix.lower() not in {".dxf", ".pdf", ".dwg"}:
+        raise ValueError("本地转换只支持 DXF、PDF、DWG")
+    output_value = str(args.get("output_file", "")).strip()
+    if not output_value and source.suffix.lower() != ".dxf":
+        output_value = f"data/cad_inputs/{source.stem}.converted.dxf"
+    output = _path(output_value) if output_value else source
+    manifest = convert_to_dxf(source, output if source.suffix.lower() != ".dxf" else None)
+    converted = output if source.suffix.lower() != ".dxf" else source
+    manifest["source_file"] = _label(source)
+    manifest["converted_file"] = _label(converted)
+    if converted.exists():
+        manifest["inspection"] = _inspect({"source_file": _label(converted)})
     return manifest
 
 
@@ -247,10 +269,27 @@ def _review(args: dict[str, Any]) -> dict[str, Any]:
     return reviewed
 
 
+def _export(args: dict[str, Any]) -> dict[str, Any]:
+    job_id = str(args.get("job_id", "")).strip()
+    job = _get_job({"job_id": job_id})
+    export_format = str(args.get("format", "")).strip().lower()
+    if export_format not in {"xlsx", "pdf"}:
+        raise ValueError("成果格式只支持 xlsx 或 pdf")
+    output_value = str(args.get("output_file", "")).strip() or f"data/cad_exports/{job_id}.{export_format}"
+    output = _path(output_value)
+    if export_format == "xlsx":
+        export_xlsx(job, output)
+    else:
+        export_pdf(job, output)
+    return {"job_id": job_id, "format": export_format, "output_file": _label(output), "sha256": sha256_file(output), "size_bytes": output.stat().st_size, "data_classification": "PRIVATE_PROJECT_DATA"}
+
+
 def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     try:
         if name == "municipal_qto_capabilities":
             return _success(_capabilities())
+        if name == "municipal_qto_convert_to_dxf":
+            return _success(_convert(args))
         if name == "municipal_qto_inspect_dxf":
             return _success(_inspect(args))
         if name == "municipal_qto_inspect_dxf_batch":
@@ -265,8 +304,10 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             return _success(_get_job(args))
         if name == "municipal_qto_review_job":
             return _success(_review(args))
+        if name == "municipal_qto_export_job":
+            return _success(_export(args))
         return _failure(f"未知工具：{name}")
-    except (OSError, PermissionError, QtoJobError, ReviewInputError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, PermissionError, ConversionError, ExportError, QtoJobError, ReviewInputError, ValueError, json.JSONDecodeError) as exc:
         return _failure(str(exc))
 
 

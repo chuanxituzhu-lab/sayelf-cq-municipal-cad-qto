@@ -1,6 +1,6 @@
 # sayelf-cq-municipal-cad-qto
 
-重庆市政 CAD 工程量计算工具（造价算量）。本仓库把项目内 DXF 图纸和人工确认的专业参数转换为可追溯的工程量计算草稿，服务造价人员复核；不承担岗位成果管理、项目管理或自动结算。
+重庆市政 CAD 工程量计算工具（造价算量）。本仓库把项目内 DXF 图纸（默认）以及本地转换后的 PDF/DWG 和人工确认的专业参数转换为可追溯的工程量计算草稿，服务造价人员复核；不承担岗位成果管理、项目管理或自动结算。
 
 ## 与 `sayelf-municipal-cost-loop` 的边界
 
@@ -10,16 +10,17 @@
 
 ```text
 打开
-  → 单选 / 多选 DXF 文件录入
+  → 单选 / 多选 DXF 文件录入（PDF / DWG 本地转 DXF）
   → 逐张检查、识别候选、保留源图哈希
   → 可选生成标准化 DXF 副本
   → 人工确认道路 / 管网 / 挡护参数
   → 确定性计算工程量
   → 查看公式、输入、哈希、告警和作业
-  → 人工复核后再进入正式造价流程
+  → 人工复核
+  → 独立下载 Excel / PDF 成果
 ```
 
-当前输入为项目内 ASCII DXF，支持 `LINE`、`LWPOLYLINE`、`TEXT`、`MTEXT`。文件入口支持单选或多选，单个文件逐一形成独立作业；批量检查不会把不同文件混成一个算量结果。
+默认输入为项目内 ASCII DXF，支持 `LINE`、`LWPOLYLINE`、`TEXT`、`MTEXT`。文件入口支持单选或多选；PDF 使用本地 PyMuPDF 提取矢量图元生成 DXF，DWG 使用本机 ODA File Converter / ezdxf odafc（未安装则明确失败）。原始文件与转换 DXF 均保留，并记录双 SHA-256。单个文件逐一形成独立作业；批量检查不会把不同文件混成一个算量结果。
 
 ## 当前算量范围
 
@@ -61,7 +62,7 @@ python server.py
 
 打开 <http://127.0.0.1:8765/>，按“文件录入 → 图纸检查 → 专业算量 → 结果复核”的工作面操作。
 
-WebUI 的上传文件只保存到当前仓库的 `data/cad_inputs/`，服务不会读取或上传另一个 cost-loop 仓库的数据。建议先使用合成样例：
+WebUI 的上传文件与转换副本只保存到当前仓库的 `data/cad_inputs/`，算量作业保存到 `data/cad_jobs/`，独立成果保存到 `data/cad_exports/`；服务不会读取或上传另一个 cost-loop 仓库的数据。建议先使用合成样例：
 
 ```text
 图纸：fixtures/cq_retaining_demo.dxf
@@ -85,6 +86,7 @@ python -m cad_qto --input fixtures/cq_retaining_demo.json --output result.json
 
 ```text
 municipal_qto_capabilities
+municipal_qto_convert_to_dxf
 municipal_qto_inspect_dxf
 municipal_qto_inspect_dxf_batch
 municipal_qto_normalize_dxf
@@ -93,6 +95,7 @@ municipal_qto_calculate_retaining       # 旧调用兼容入口
 municipal_qto_list_jobs
 municipal_qto_get_job
 municipal_qto_review_job
+municipal_qto_export_job
 ```
 
 Codex、Claude Code、WorkBuddy、千问/百炼、豆包/扣子等宿主只应接入本地 STDIO 或经过授权的私有 MCP。真实图纸、合同、计价文件和作业数据不得上传到公共网络或外部模型。
@@ -104,7 +107,8 @@ Codex、Claude Code、WorkBuddy、千问/百炼、豆包/扣子等宿主只应�
 | GET | `/api/bootstrap` | 项目身份与能力清单 |
 | GET | `/api/cad/status` | 输入、专业、规则包和审核门 |
 | GET | `/api/cad/files` | 查看本地已录入文件 |
-| POST | `/api/cad/files` | 单选/多选上传 DXF 到本地私有目录 |
+| POST | `/api/cad/files` | 单选/多选上传 DXF/PDF/DWG；非 DXF 在本地转为 DXF |
+| POST | `/api/cad/convert` | 对项目内 PDF/DWG 执行本地转 DXF |
 | POST | `/api/cad/inspect` | 检查单张 DXF |
 | POST | `/api/cad/inspect-batch` | 批量检查多张 DXF |
 | POST | `/api/cad/normalize` | 生成标准化 DXF 副本 |
@@ -113,6 +117,8 @@ Codex、Claude Code、WorkBuddy、千问/百炼、豆包/扣子等宿主只应�
 | GET | `/api/cad/jobs` | 查看本地作业摘要 |
 | GET | `/api/cad/jobs/{job_id}` | 查看完整结果 |
 | POST | `/api/cad/jobs/{job_id}/review` | 记录人工复核 |
+| GET | `/api/cad/jobs/{job_id}/export?format=xlsx` | 独立下载 Excel 成果 |
+| GET | `/api/cad/jobs/{job_id}/export?format=pdf` | 独立下载 PDF 成果 |
 
 ## 可信和数据边界
 
@@ -120,10 +126,10 @@ Codex、Claude Code、WorkBuddy、千问/百炼、豆包/扣子等宿主只应�
 - 依据人工确认参数和版本化公式计算的是 `Inference`；
 - 通过原图、设计依据、专业参数、单位/规则、工程部位五项检查并完成本地身份核验后，才允许成为 `Fact`；
 - 缺少关键尺寸、单位异常、未支持实体或数量告警时，不补猜，保留人工复核项；
-- 真实文件属于 `Sensitive/Restricted`，只留在本地 `data/cad_inputs/`、`data/cad_jobs/`，不进入 GitHub；
+- 真实文件属于 `Sensitive/Restricted`，只留在本地 `data/cad_inputs/`、`data/cad_jobs/`、`data/cad_exports/`，不进入 GitHub；
 - 服务默认只监听 `127.0.0.1`，路径限制在项目根目录内。
 
-本工具当前只做几何工程量，不自动套用重庆定额、清单、综合单价或结算口径；不自动完成 OCR/视觉识别、DWG/PDF/BIM 解析、设计意图推断、审批或入账。
+本工具当前只做几何工程量，不自动套用重庆定额、清单、综合单价或结算口径；不对扫描 PDF 自动 OCR，不做设计意图推断、审批或入账。DWG 依赖本机转换器，不保证任何 DWG 无条件可转。
 
 ## 测试
 
@@ -144,3 +150,4 @@ node --check web/app.js
 - [字段与测试基线](docs/重庆市政图纸算量-字段与测试基线-v0.1.md)
 - [跨平台插件 BDR](docs/跨平台AI插件-BDR-v0.1.md)
 - [跨平台插件接入与验收](docs/跨平台AI插件-接入与验收-v0.1.md)
+- [本地转换与成果导出 BDR](docs/本地转换与成果导出-BDR-v0.4.md)

@@ -58,7 +58,7 @@ function renderCapabilities() {
   const c = state.capabilities;
   $("#ruleVersion").textContent = c.rule_pack_versions.join(" · ");
   $("#metrics").innerHTML = [
-    ["输入格式", c.input_formats.join("、"), "本地 DXF 文件"],
+    ["输入格式", c.input_formats.join("、"), "默认 DXF；PDF / DWG 本地转 DXF"],
     ["文件入口", "单选 / 多选", "一次最多录入 50 个"],
     ["专业范围", c.disciplines.map((item) => ({road: "道路", network: "管网", retaining: "挡护"}[item] || item)).join(" · "), "统一算量核心"],
     ["审核门", "必须人工复核", "Inference 不自动入账"]
@@ -90,13 +90,13 @@ function renderSourceOptions() {
   const current = select.value;
   const options = [{source_file: "fixtures/cq_retaining_demo.dxf", original_name: "合成样例"}].concat(state.files);
   const seen = new Set();
-  select.innerHTML = options.filter((file) => !seen.has(file.source_file) && seen.add(file.source_file)).map((file) => `<option value="${esc(file.source_file)}">${esc(file.original_name || file.source_file)} · ${esc(file.source_file)}</option>`).join("");
+  select.innerHTML = options.filter((file) => !seen.has(file.source_file) && seen.add(file.source_file)).map((file) => `<option value="${esc(file.source_file)}">${esc(file.original_name || file.source_file)}${file.input_format && file.input_format !== "dxf" ? ` · ${esc(file.input_format.toUpperCase())}→DXF` : ""} · ${esc(file.source_file)}</option>`).join("");
   if ([...select.options].some((option) => option.value === current)) select.value = current;
 }
 
 function renderSelectedFiles() {
   const files = state.selectedFiles;
-  $("#selectedFiles").innerHTML = files.length ? files.map((file) => `<span class="file-pill">${esc(file.name)} <small>${esc((file.size / 1024).toFixed(1))} KB</small></span>`).join("") : `<span class="muted">尚未选择文件。</span>`;
+  $("#selectedFiles").innerHTML = files.length ? files.map((file) => `<span class="file-pill">${esc(file.name)} <small>${esc((file.name.split(".").pop() || "").toUpperCase())} · ${esc((file.size / 1024).toFixed(1))} KB</small></span>`).join("") : `<span class="muted">尚未选择文件。</span>`;
 }
 
 function renderBatchInspections(inspections, selector) {
@@ -110,7 +110,9 @@ function renderBatchInspections(inspections, selector) {
   target.innerHTML = inspections.map((item) => {
     if (item.status === "ERROR") return `<div class="batch-row error-row"><b>${esc(item.source_file)}</b><span>${esc(item.error)}</span></div>`;
     const inventory = item.geometry_inventory || {};
-    return `<div class="batch-row"><b>${esc(item.source_file)}</b><span>${esc(inventory.entity_count || 0)} 个支持实体 · ${esc(inventory.unsupported_entity_count || 0)} 个未支持实体 · ${item.review_required ? "需人工复核" : "已解析"}</span></div>`;
+    const file = state.files.find((candidate) => candidate.source_file === item.source_file);
+    const sourceLabel = file && file.original_file !== file.source_file ? `${file.original_name} · 本地转换 DXF ${file.source_file}` : item.source_file;
+    return `<div class="batch-row"><b>${esc(sourceLabel)}</b><span>${esc(inventory.entity_count || 0)} 个支持实体 · ${esc(inventory.unsupported_entity_count || 0)} 个未支持实体 · ${item.review_required ? "需人工复核" : "已解析"}</span></div>`;
   }).join("");
 }
 
@@ -122,7 +124,7 @@ async function refreshFiles() {
 
 async function uploadSelectedFiles() {
   if (!state.selectedFiles.length) {
-    message("#fileMessage", "请先选择一个或多个 DXF 文件。", true);
+    message("#fileMessage", "请先选择一个或多个 DXF、PDF 或 DWG 文件。", true);
     return;
   }
   const formData = new FormData();
@@ -138,7 +140,7 @@ async function uploadSelectedFiles() {
 async function inspectUploadedFiles(selector = "#batchInspectionResult") {
   if (!state.files.length) {
     renderBatchInspections([], selector);
-    message("#fileMessage", "暂无已录入文件，请先选择并录入 DXF。", true);
+    message("#fileMessage", "暂无已录入文件，请先选择并录入 DXF、PDF 或 DWG。", true);
     return;
   }
   const payload = await request("/api/cad/inspect-batch", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({source_files: state.files.map((file) => file.source_file)})});
@@ -170,10 +172,12 @@ function renderJob(job, target = "#calculationResult") {
   const source = job.source || {};
   const totals = calculation.totals || [];
   const quantities = calculation.quantities || [];
-  const warnings = [...(source.warnings || []), ...(calculation.warnings || []).map((item) => item.message || item)];
+  const warnings = [...(source.warnings || []), ...(source.conversion_warnings || []), ...(calculation.warnings || []).map((item) => item.message || item)];
   const candidates = (job.recognition?.candidates || []).map((item) => `${item.layer} → ${(item.candidate_groups || []).join("、")}`).join("；") || "未匹配到专业图层";
   const disciplines = (calculation.disciplines || []).map((item) => ({road: "道路", network: "管网", retaining: "挡护"}[item] || item)).join(" · ");
-  $(target).innerHTML = `<div class="evidence-grid"><div class="data-box"><span>作业状态</span><b class="status ${statusClass(job.status)}">${esc(job.status)}</b></div><div class="data-box"><span>计算专业</span><b>${esc(disciplines || "未指定")}</b></div><div class="data-box"><span>计算状态</span><b>${esc(calculation.review_status || "待人工审核")}</b></div><div class="data-box"><span>规则包</span><b>${esc(calculation.rule_pack_version)}</b></div><div class="data-box"><span>源图 SHA-256</span><b>${esc(source.source_sha256)}</b></div><div class="data-box"><span>标准化 DXF SHA-256</span><b>${esc(source.canonical_sha256)}</b></div><div class="data-box"><span>识别候选（Hypothesis）</span><b>${esc(candidates)}</b></div></div>${warnings.length ? `<div class="warning-box">告警：${warnings.map((item) => esc(item)).join("；")}</div>` : ""}<div class="quantity-table"><div class="quantity-row quantity-head"><span>编码</span><span>分项</span><span>单位</span><span>数量</span></div>${totals.map((item) => `<div class="quantity-row"><span>${esc(item.item_code)}</span><span>${esc(item.item)}</span><span>${esc(item.unit)}</span><span>${esc(item.quantity)}</span></div>`).join("")}</div><div class="formula-list">${quantities.slice(0, 50).map((item) => `<div class="formula-item">${esc(item.discipline)} / ${esc(item.item_code)}：${esc(item.formula)} = ${esc(item.quantity)} ${esc(item.unit)} · ${esc(item.status)}</div>`).join("")}</div>`;
+  const conversion = source.conversion_status && source.conversion_status !== "NOT_NEEDED" ? `<div class="data-box"><span>输入转换</span><b>${esc(source.conversion_status)} · ${esc(source.conversion_method || "local")}</b><small>${esc(source.original_file || "")} · 原图 SHA ${esc(source.original_sha256 || "")}</small></div>` : "";
+  const downloads = `<div class="download-actions"><span>独立成果下载</span><a class="outline" href="/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=xlsx" download>下载 Excel</a><a class="outline" href="/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=pdf" download>下载 PDF</a></div>`;
+  $(target).innerHTML = `${downloads}<div class="evidence-grid"><div class="data-box"><span>作业状态</span><b class="status ${statusClass(job.status)}">${esc(job.status)}</b></div><div class="data-box"><span>计算专业</span><b>${esc(disciplines || "未指定")}</b></div><div class="data-box"><span>计算状态</span><b>${esc(calculation.review_status || "待人工审核")}</b></div><div class="data-box"><span>规则包</span><b>${esc(calculation.rule_pack_version)}</b></div><div class="data-box"><span>源图 SHA-256</span><b>${esc(source.source_sha256)}</b></div><div class="data-box"><span>标准化 DXF SHA-256</span><b>${esc(source.canonical_sha256)}</b></div><div class="data-box"><span>识别候选（Hypothesis）</span><b>${esc(candidates)}</b></div>${conversion}</div>${warnings.length ? `<div class="warning-box">告警：${warnings.map((item) => esc(item)).join("；")}</div>` : ""}<div class="quantity-table"><div class="quantity-row quantity-head"><span>编码</span><span>分项</span><span>单位</span><span>数量</span></div>${totals.map((item) => `<div class="quantity-row"><span>${esc(item.item_code)}</span><span>${esc(item.item)}</span><span>${esc(item.unit)}</span><span>${esc(item.quantity)}</span></div>`).join("")}</div><div class="formula-list">${quantities.slice(0, 50).map((item) => `<div class="formula-item">${esc(item.discipline)} / ${esc(item.item_code)}：${esc(item.formula)} = ${esc(item.quantity)} ${esc(item.unit)} · ${esc(item.status)}</div>`).join("")}</div>`;
   if (target === "#calculationResult") { $("#calculationState").textContent = calculation.review_status || job.status; $("#calculationState").className = `state-chip ${statusClass(job.status)}`; }
   if (target === "#reviewDetail") { $("#reviewState").textContent = job.status; $("#reviewState").className = `state-chip ${statusClass(job.status)}`; $("#reviewFormPanel").hidden = ["FACT_CONFIRMED", "REJECTED"].includes(job.status); $("#reviewerId").value = ""; }
 }

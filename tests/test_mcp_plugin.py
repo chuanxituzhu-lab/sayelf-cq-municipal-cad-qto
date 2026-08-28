@@ -71,11 +71,13 @@ class McpPluginTests(unittest.TestCase):
         self.assertEqual(len(responses), 4, completed.stdout)
         self.assertEqual(responses[0]["result"]["protocolVersion"], "2024-11-05")
         names = {tool["name"] for tool in responses[1]["result"]["tools"]}
-        self.assertEqual(len(names), 9)
+        self.assertEqual(len(names), 11)
+        self.assertIn("municipal_qto_convert_to_dxf", names)
         self.assertIn("municipal_qto_calculate", names)
         self.assertIn("municipal_qto_inspect_dxf_batch", names)
         self.assertIn("municipal_qto_calculate_retaining", names)
         self.assertIn("municipal_qto_review_job", names)
+        self.assertIn("municipal_qto_export_job", names)
         capabilities = json.loads(responses[2]["result"]["content"][0]["text"])
         self.assertFalse(capabilities["external_upload"])
         inspection = json.loads(responses[3]["result"]["content"][0]["text"])
@@ -89,16 +91,14 @@ class McpPluginTests(unittest.TestCase):
             (project / "fixtures").mkdir()
             shutil.copy2(ROOT / FIXTURE, project / FIXTURE)
             shutil.copytree(ROOT / "cad_qto", project / "cad_qto")
-            requests = [
-                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "municipal_qto_calculate_retaining", "arguments": {"source_file": FIXTURE, "sections": payload["sections"]}}},
-            ]
+            request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "municipal_qto_calculate_retaining", "arguments": {"source_file": FIXTURE, "sections": payload["sections"]}}}
             env = os.environ.copy()
             env["MUNICIPAL_QTO_PROJECT_ROOT"] = str(project)
             completed = subprocess.run(
                 [sys.executable, str(MCP_SERVER)],
                 cwd=ROOT,
                 env=env,
-                input=json.dumps(requests[0], ensure_ascii=False) + "\n",
+                input=json.dumps(request, ensure_ascii=False) + "\n",
                 capture_output=True,
                 text=True,
                 check=False,
@@ -113,6 +113,23 @@ class McpPluginTests(unittest.TestCase):
             stored = json.loads(result_path.read_text(encoding="utf-8"))
             self.assertEqual(stored["result_file"], result["result_file"])
             self.assertEqual(stored["source"]["source_file"], FIXTURE)
+
+            export_request = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "municipal_qto_export_job", "arguments": {"job_id": result["job_id"], "format": "xlsx"}}}
+            exported = subprocess.run(
+                [sys.executable, str(MCP_SERVER)],
+                cwd=ROOT,
+                env=env,
+                input=json.dumps(export_request, ensure_ascii=False) + "\n",
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(exported.returncode, 0, exported.stderr)
+            export_response = json.loads(exported.stdout)
+            self.assertFalse(export_response["result"].get("isError"))
+            export_result = json.loads(export_response["result"]["content"][0]["text"])
+            self.assertEqual(export_result["format"], "xlsx")
+            self.assertTrue((project / export_result["output_file"]).exists())
 
     def test_stdio_verified_review_promotes_fact(self) -> None:
         payload = json.loads((ROOT / "fixtures" / "cq_retaining_demo.json").read_text(encoding="utf-8"))

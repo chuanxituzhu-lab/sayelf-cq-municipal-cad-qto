@@ -56,7 +56,7 @@ cad_qto.dxf / canonical / recognition
 - 道路：路面面积/体积、基层、底基层、路基挖方、路基填方、明确输入的路缘石；
 - 管网：管道长度、沟槽开挖、垫层、管道占用体积、沟槽回填、检查井/雨水口明确数量；
 - 挡护：墙身、基础、开挖、回填、泄水孔、反滤层、锚杆/锚索、抗滑桩、喷射混凝土、钢筋网；
-- 文件：当前只接受本地 ASCII DXF；DWG/PDF/IFC/LandXML 保持为未来独立适配器，不在本次伪装支持。
+- 文件：默认接受本地 ASCII DXF；PDF 通过本地矢量提取转 DXF，DWG 通过部署机本地转换器转 DXF；IFC/LandXML 仍保持为未来独立适配器。
 
 ## 5. Plugin boundaries and repository isolation
 
@@ -64,15 +64,15 @@ cad_qto.dxf / canonical / recognition
 - `server.py`、`web/`：本仓库本地 WebUI 和 API；
 - `plugins/municipal-cad-qto/`：本仓库的 MCP/宿主适配器；
 - `data/`：本仓库的私有输入、标准化图、作业和审核结果；
-- `sayelf-municipal-cost-loop`：不作为依赖、上游、下游或共享数据库；若未来需要交付，只能由人工审核后导出公开定义的结果文件，且必须另行授权和审查。
+- `sayelf-municipal-cost-loop`：不作为依赖、上游、下游或共享数据库；若未来需要交付，只能由人工审核后导出公开定义的结果文件，且必须另行授权和审查。本仓库的 Excel/PDF 下载仍是本地成果，不构成仓库联通。
 
 ## 6. Local-first and data boundary
 
-本地文件上传只写入当前仓库的 `data/cad_inputs/`，检查和计算在本地完成。真实图纸、计价文件、合同、项目数据和审核信息属于 `Sensitive/Restricted`，不进入 GitHub、不传给外部模型、不复制到 cost-loop 仓库。只发布代码、合成 DXF、脱敏文档和公开规则说明。
+本地文件上传只写入当前仓库的 `data/cad_inputs/`，转换副本仍留在本地，检查、计算和成果导出也在本地完成。真实图纸、计价文件、合同、项目数据和审核信息属于 `Sensitive/Restricted`，不进入 GitHub、不传给外部模型、不复制到 cost-loop 仓库。只发布代码、合成 DXF、脱敏文档和公开规则说明。
 
 ## 7. State and evidence
 
-文件状态：`LOCAL_SELECTED → STORED_PRIVATE → PARSED → NORMALIZED`。
+文件状态：`LOCAL_SELECTED → STORED_PRIVATE → CONVERTED/NOT_NEEDED → PARSED → NORMALIZED`。
 
 算量状态：`DRAFT → CALCULATED → REVIEW_REQUIRED → FACT_CONFIRMED/RETURNED/REJECTED`。
 
@@ -83,12 +83,12 @@ cad_qto.dxf / canonical / recognition
 WebUI 必须保留，因为文件录入、批量检查、专业选择、参数确认、证据查看和人工复核需要可视化控制。普通路径为：
 
 ```text
-打开 → 录入文件（单选/多选） → 检查 → 选择专业 → 执行 → 结果 → 复核
+打开 → 录入文件（单选/多选） → 本地转换（必要时） → 检查 → 选择专业 → 执行 → 结果/下载 → 复核
 ```
 
 ## 9. Simplest reliable implementation
 
-Python 标准库 + 现有 ASCII DXF 解析器 + 三个轻量规则模块 + 本地 multipart 文件入口 + 原生 HTML/CSS/JavaScript。暂不引入视觉模型、云端 OCR、复杂 CAD SDK、定额数据库或第二套项目系统。
+Python 标准库 + 现有 ASCII DXF 解析器 + 三个轻量规则模块 + PyMuPDF PDF 矢量提取 + 本机 DWG 转换器适配 + 本地 multipart 文件入口 + 原生 HTML/CSS/JavaScript。暂不引入视觉模型、云端 OCR、复杂 CAD SDK、定额数据库或第二套项目系统。
 
 ## 10. Explicitly not building
 
@@ -96,4 +96,4 @@ Python 标准库 + 现有 ASCII DXF 解析器 + 三个轻量规则模块 + 本�
 - 不建设岗位成果、项目管理、周报/月报、即时通讯、身份平台；
 - 不根据图层名称直接认定专业和工程量；
 - 不自动套重庆定额、综合单价、结算口径或自动入账；
-- 不宣称当前版本支持 DWG/PDF/BIM 全自动识别。
+- 不宣称当前版本支持扫描 PDF、任意 DWG 或 BIM 的全自动识别；PDF/DWG 进入算量前必须变成可检查的 DXF，并保留转换告警。

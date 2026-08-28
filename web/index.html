@@ -30,15 +30,15 @@
 
       <main class="main">
         <section class="view active" id="view-dashboard">
-          <div class="hero"><div><span class="eyebrow">CAD 造价算量 / 文件入口</span><h2>先录入图纸，再核算工程量。</h2><p>支持单选或多选 DXF 文件。录入后逐张检查，再选择道路、管网或挡护专业输入人工确认参数。</p></div><button class="primary" data-go="calculate">进入专业算量 <span>→</span></button></div>
+          <div class="hero"><div><span class="eyebrow">CAD 造价算量 / 文件入口</span><h2>先录入图纸，再核算工程量。</h2><p>默认录入 DXF；PDF、DWG 在本机转换为 DXF 后，统一进入道路、管网、挡护算量与人工复核。</p></div><button class="primary" data-go="calculate">进入专业算量 <span>→</span></button></div>
           <div class="metric-grid" id="metrics"></div>
           <section class="panel file-entry-panel">
             <div class="panel-head"><div><span class="eyebrow">Input / Local files</span><h3>录入施工图文件</h3></div><span class="state-chip">单选 / 多选</span></div>
             <form id="fileEntryForm">
               <div class="file-picker">
-                <label class="file-dropzone" id="fileDropzone" for="fileInput" tabindex="0" role="button"><span class="drop-icon" aria-hidden="true">＋</span><span class="drop-copy"><strong>选择或拖入项目 DXF 文件</strong><small>支持单选 / 多选；当前只接受 ASCII DXF</small></span><span class="file-choose">选择文件</span></label>
-                <input class="file-input" id="fileInput" name="files" type="file" accept=".dxf" multiple required>
-                <small class="file-helper">文件会保存到本项目 <code>data/cad_inputs/</code>，录入后可逐张检查或批量检查。</small>
+                <label class="file-dropzone" id="fileDropzone" for="fileInput" tabindex="0" role="button"><span class="drop-icon" aria-hidden="true">＋</span><span class="drop-copy"><strong>选择或拖入项目 DXF 文件</strong><small>默认 DXF；也支持 PDF / DWG，本地转换为 DXF</small></span><span class="file-choose">选择文件</span></label>
+                <input class="file-input" id="fileInput" name="files" type="file" accept=".dxf,.pdf,.dwg" multiple required>
+                <small class="file-helper">文件和转换副本只保存到本项目 <code>data/cad_inputs/</code>；不上传云端。可单选或多选，转换后逐张检查或批量检查。</small>
               </div>
               <div id="selectedFiles" class="file-list"><span class="muted">尚未选择文件。</span></div>
               <div class="button-row"><button class="primary" type="submit">录入并检查 <span>→</span></button><button class="outline" id="inspectUploadedBtn" type="button">批量检查已录入文件</button></div>
@@ -47,17 +47,17 @@
             <div id="batchInspectionResult" class="batch-result"></div>
           </section>
           <div class="process-title"><span>标准工作路径</span><small>文件录入 → 图纸检查 → 专业参数 → 几何算量 → 人工复核</small></div>
-          <div class="process"><div class="process-step active"><b>01</b><span>录入文件</span><small>单选 / 多选 DXF</small></div><i>→</i><div class="process-step"><b>02</b><span>检查 / 标准化</span><small>保留源图哈希</small></div><i>→</i><div class="process-step"><b>03</b><span>选择专业</span><small>道路 / 管网 / 挡护</small></div><i>→</i><div class="process-step"><b>04</b><span>计算工程量</span><small>Inference 草稿</small></div><i>→</i><div class="process-step"><b>05</b><span>人工复核</span><small>才可能成为 Fact</small></div></div>
+          <div class="process"><div class="process-step active"><b>01</b><span>录入文件</span><small>DXF / PDF / DWG</small></div><i>→</i><div class="process-step"><b>02</b><span>本地转换 / 检查</span><small>保留双哈希</small></div><i>→</i><div class="process-step"><b>03</b><span>选择专业</span><small>道路 / 管网 / 挡护</small></div><i>→</i><div class="process-step"><b>04</b><span>计算工程量</span><small>Inference 草稿</small></div><i>→</i><div class="process-step"><b>05</b><span>人工复核 / 下载</span><small>Excel / PDF 成果</small></div></div>
           <div class="two-col">
-            <section class="panel quick-panel"><div class="panel-head"><div><span class="eyebrow">Quick inspect</span><h3>已有项目内文件</h3></div><span class="state-chip">ASCII DXF</span></div><form id="quickInspectForm"><label>DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="quickNormalizeBtn" type="button">生成标准化副本</button></div></form><div id="quickMessage" class="message"></div></section>
+            <section class="panel quick-panel"><div class="panel-head"><div><span class="eyebrow">Quick inspect</span><h3>已有项目内文件</h3></div><span class="state-chip">DXF / PDF / DWG</span></div><form id="quickInspectForm"><label>DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required></label><div class="button-row"><button class="primary" type="submit">检查图纸 <span>→</span></button><button class="outline" id="quickNormalizeBtn" type="button">生成标准化副本</button></div></form><div id="quickMessage" class="message"></div></section>
             <section class="panel latest-panel"><div class="panel-head"><div><span class="eyebrow">Recent jobs</span><h3>本地算量结果</h3></div><button class="text-button" data-go="jobs">查看全部 →</button></div><div id="latestJob"></div></section>
           </div>
           <section class="panel scope-panel"><div class="panel-head"><div><span class="eyebrow">Current scope</span><h3>三类市政工程量</h3></div><span class="muted">只做几何数量，不套定额和单价</span></div><div id="disciplineScope" class="discipline-scope"></div></section>
         </section>
 
         <section class="view" id="view-inspect">
-          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 图纸检查</span><h2>先看清图纸，再开始算量</h2><p>检查是只读操作；标准化只生成副本，不覆盖原始 DXF。已录入文件可以一次批量检查。</p></div></div>
-          <section class="panel form-panel"><form id="inspectForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>不接受绝对路径、公开 URL 或项目目录外文件。</small></label><div class="button-row"><button class="primary" type="submit">检查当前图纸 <span>→</span></button><button class="outline" id="normalizeBtn" type="button">生成标准化 DXF</button><button class="outline" id="inspectUploadedBtn2" type="button">批量检查已录入文件</button></div><div id="inspectMessage" class="message"></div></form></section>
+          <div class="page-heading"><div><span class="eyebrow">工作面 02 / 图纸检查</span><h2>先看清图纸，再开始算量</h2><p>PDF/DWG 在文件录入时已本地转换为 DXF；这里检查的是实际进入算量的 DXF，标准化只生成副本，不覆盖原始文件。</p></div></div>
+          <section class="panel form-panel"><form id="inspectForm"><label>项目内 DXF 相对路径<input name="source_file" value="fixtures/cq_retaining_demo.dxf" required><small>不接受绝对路径、公开 URL 或项目目录外文件；PDF/DWG 请先通过文件入口转换。</small></label><div class="button-row"><button class="primary" type="submit">检查当前图纸 <span>→</span></button><button class="outline" id="normalizeBtn" type="button">生成标准化 DXF</button><button class="outline" id="inspectUploadedBtn2" type="button">批量检查已录入文件</button></div><div id="inspectMessage" class="message"></div></form></section>
           <section class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">Observation</span><h3>图纸检查结果</h3></div><span class="state-chip" id="inspectState">等待检查</span></div><div id="inspectionResult" class="result-empty">输入图纸路径并执行检查，结果会显示在这里。</div></section>
           <section class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">Batch observation</span><h3>批量文件检查</h3></div></div><div id="batchInspectionResult2" class="result-empty">尚未执行批量检查。</div></section>
         </section>
@@ -66,7 +66,7 @@
           <div class="page-heading"><div><span class="eyebrow">工作面 03 / 综合专业算量</span><h2>选择专业，计算市政工程量</h2><p>图层识别只提供候选；以下道路、管网和挡护参数必须来自图纸、断面表或设计说明。</p></div></div>
           <div class="notice"><b>计算结果是 Inference</b><span>不会自动进入造价系统。缺少关键尺寸、单位异常或图纸告警时，必须停在人工复核。</span></div>
           <form class="panel form-panel" id="calculateForm">
-            <label>用于算量的项目内 DXF<select name="source_file" id="calculateSourceSelect"><option value="fixtures/cq_retaining_demo.dxf">合成样例 · fixtures/cq_retaining_demo.dxf</option></select></label>
+            <label>用于算量的项目内 DXF<select name="source_file" id="calculateSourceSelect"><option value="fixtures/cq_retaining_demo.dxf">合成样例 · fixtures/cq_retaining_demo.dxf</option></select><small>PDF / DWG 会在录入后显示对应的本地转换 DXF；算量始终基于 DXF。</small></label>
             <div class="discipline-grid">
               <label class="discipline-card"><strong>道路工程</strong><small>路面、基层、路基挖填、路缘石、人行道</small><textarea id="roadSectionsInput" rows="12" aria-label="道路断面参数"></textarea></label>
               <label class="discipline-card"><strong>管网工程</strong><small>管道、沟槽、垫层、回填、检查井、雨水口</small><textarea id="networkSectionsInput" rows="12" aria-label="管网分段参数"></textarea></label>

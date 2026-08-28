@@ -10,6 +10,7 @@
 
 ```text
 municipal_qto_capabilities
+municipal_qto_convert_to_dxf
 municipal_qto_inspect_dxf
 municipal_qto_inspect_dxf_batch
 municipal_qto_normalize_dxf
@@ -18,31 +19,34 @@ municipal_qto_calculate_retaining       # 旧调用兼容入口
 municipal_qto_list_jobs
 municipal_qto_get_job
 municipal_qto_review_job
+municipal_qto_export_job
 ```
 
 推荐调用顺序：
 
 ```text
 capabilities
+  → convert_to_dxf（PDF/DWG 可选）
   → inspect_dxf / inspect_dxf_batch
   → normalize_dxf（可选）
   → 人工确认道路 / 管网 / 挡护参数
   → calculate
   → get_job
   → review_job
+  → export_job（Excel / PDF）
 ```
 
-文件可以在 WebUI 通过单选/多选录入；MCP 调用仍必须传项目根目录内的单个相对路径，批量检查使用 `municipal_qto_inspect_dxf_batch`。不同文件不混成一个算量作业。
+文件可以在 WebUI 通过单选/多选录入；默认 DXF，PDF 由本机 PyMuPDF 提取矢量图元后生成 DXF，DWG 依赖部署机已安装并配置的 ODA File Converter。MCP 调用仍必须传项目根目录内的相对路径，批量检查使用 `municipal_qto_inspect_dxf_batch`。不同文件不混成一个算量作业。
 
 ## 当前支持
 
-- 输入：ASCII DXF；
+- 输入：ASCII DXF（默认）；PDF（本地矢量转 DXF）；DWG（本机转换器转 DXF）；
 - 实体：`LINE`、`LWPOLYLINE`、`TEXT`、`MTEXT`；
 - 道路：面层、基层、底基层、挖方、填方、路缘石、侧平石/人行道；
 - 管网：管道、沟槽开挖、垫层、回填、检查井、雨水口、道路恢复；
 - 挡护：墙身、基础、开挖、回填、泄水孔、反滤层、锚杆/锚索、抗滑桩、喷射混凝土、钢筋网；
 - 规则包：`cq-municipal-road-v0.1`、`cq-municipal-network-v0.1`、`cq-municipal-retaining-v0.1`；
-- 输出：数量、单位、公式、输入快照、专业、规则包版本、源图/标准化图 SHA-256、告警和审核状态。
+- 输出：数量、单位、公式、输入快照、专业、规则包版本、源图/标准化图 SHA-256、转换双哈希、告警和审核状态；作业可独立导出 Excel 或 PDF。
 
 图层/文字识别是 `Hypothesis`，公式计算是 `Inference`。只有完成五项人工检查并通过本地身份核验，结果才可成为 `Fact`。插件不自动套定额、不自动审批、不自动入账。
 
@@ -64,8 +68,8 @@ python plugins/municipal-cad-qto/mcp_http_server.py
 
 ## 数据边界
 
-WebUI 上传的 DXF 写入本仓库 `data/cad_inputs/`，作业写入 `data/cad_jobs/`，均不进入 GitHub。真实图纸、合同、计价文件和作业数据不得上传给外部模型或公共网络。公开发布前只允许代码、合成样例、插件契约和脱敏文档通过检查。
+WebUI 上传的 DXF/PDF/DWG 与本地转换副本写入本仓库 `data/cad_inputs/`，作业写入 `data/cad_jobs/`，导出文件写入 `data/cad_exports/`，均不进入 GitHub。真实图纸、合同、计价文件和作业数据不得上传给外部模型或公共网络。公开发布前只允许代码、合成样例、插件契约和脱敏文档通过检查。
 
 ## 格式边界
 
-DWG、PDF、IFC、LandXML 不是当前插件的输入。若部署侧在本地完成转换，必须保留原文件哈希，生成 DXF 后重新执行 `municipal_qto_inspect_dxf`；不把转换能力伪装成插件内自动识别。
+PDF/DWG 只在本地通过 `municipal_qto_convert_to_dxf` 进入插件；扫描 PDF 不自动 OCR，未安装 DWG 转换器时返回失败并保留原因。转换必须保留原文件哈希，生成 DXF 后重新执行 `municipal_qto_inspect_dxf`。IFC、LandXML 仍不属于当前输入。

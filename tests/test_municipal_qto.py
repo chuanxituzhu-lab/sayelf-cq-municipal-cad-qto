@@ -6,11 +6,13 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import server as app_server
 
 from cad_qto.canonical import canonicalize_dxf
+from cad_qto.conversion import ConversionError, convert_to_dxf
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf
 from cad_qto.job import run_job
 from cad_qto.network import calculate_network_sections
@@ -89,6 +91,25 @@ class MunicipalQtoTests(unittest.TestCase):
         with self.assertRaises(RetainingInputError):
             calculate_retaining_sections([{"section_id": "R-X", "length_m": 20}], {})
 
+    def test_conversion_rejects_scan_like_pdf_and_missing_dwg_converter(self) -> None:
+        from reportlab.pdfgen import canvas
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            blank_pdf = root / "scan-like.pdf"
+            pdf = canvas.Canvas(str(blank_pdf), pagesize=(200, 100))
+            pdf.showPage()
+            pdf.save()
+            with self.assertRaises(ConversionError) as pdf_error:
+                convert_to_dxf(blank_pdf, root / "scan-like.dxf")
+            self.assertIn("矢量线段或文字", str(pdf_error.exception))
+
+            fake_dwg = root / "drawing.dwg"
+            fake_dwg.write_bytes(b"not-a-dwg")
+            with self.assertRaises(ConversionError) as dwg_error:
+                convert_to_dxf(fake_dwg, root / "drawing.dxf")
+            self.assertTrue("DWG" in str(dwg_error.exception) or "dwg" in str(dwg_error.exception))
+
     def test_review_requires_all_checks_and_explicit_confirmation(self) -> None:
         payload = json.loads(INPUT.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as folder:
@@ -112,12 +133,13 @@ class MunicipalQtoTests(unittest.TestCase):
         self.assertEqual(promoted["review"]["semantic_status"], "Fact")
 
     def test_server_exposes_only_cad_workflow_and_persists_job(self) -> None:
-        original = {name: getattr(app_server, name) for name in ("DATA", "CAD_JOBS", "CAD_INPUTS", "PROJECT_ID", "PROJECT_NAME", "REVIEWER_ID")}
+        original = {name: getattr(app_server, name) for name in ("DATA", "CAD_JOBS", "CAD_INPUTS", "CAD_EXPORTS", "PROJECT_ID", "PROJECT_NAME", "REVIEWER_ID")}
         with tempfile.TemporaryDirectory() as folder:
             data = Path(folder) / "data"
             app_server.DATA = data
             app_server.CAD_JOBS = data / "cad_jobs"
             app_server.CAD_INPUTS = data / "cad_inputs"
+            app_server.CAD_EXPORTS = data / "cad_exports"
             app_server.PROJECT_ID = "TEST-CAD-QTO"
             app_server.PROJECT_NAME = "测试 CAD 造价算量"
             app_server.REVIEWER_ID = None
@@ -129,9 +151,11 @@ class MunicipalQtoTests(unittest.TestCase):
                 with urllib.request.urlopen(f"{base}/api/bootstrap") as response:
                     bootstrap = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(bootstrap["project"]["project_name"], "测试 CAD 造价算量")
-                self.assertEqual(bootstrap["input_formats"], ["ASCII DXF"])
+                self.assertEqual(bootstrap["input_formats"], ["ASCII DXF（默认）", "PDF（本地矢量转 DXF）", "DWG（本地转换器转 DXF）"])
                 self.assertEqual(bootstrap["disciplines"], ["road", "network", "retaining"])
                 self.assertTrue(bootstrap["file_entry"]["multiple"])
+                self.assertEqual(bootstrap["file_entry"]["default_extension"], ".dxf")
+                self.assertEqual({".dxf", ".pdf", ".dwg"}, set(bootstrap["file_entry"]["accepted_extensions"]))
                 self.assertNotIn("roles", bootstrap)
 
                 boundary = "----sayelf-cad-qto-test"
@@ -186,6 +210,16 @@ class MunicipalQtoTests(unittest.TestCase):
                 self.assertEqual(detail["job_id"], job_id)
                 self.assertEqual(len(detail["source"]["source_sha256"]), 64)
 
+                with urllib.request.urlopen(f"{base}/api/cad/jobs/{job_id}/export?format=xlsx") as response:
+                    workbook = response.read()
+                    self.assertEqual(response.status, 200)
+                    self.assertIn("attachment", response.headers.get("Content-Disposition", ""))
+                self.assertTrue(zipfile.is_zipfile(__import__("io").BytesIO(workbook)))
+                with urllib.request.urlopen(f"{base}/api/cad/jobs/{job_id}/export?format=pdf") as response:
+                    report = response.read()
+                    self.assertEqual(response.status, 200)
+                self.assertTrue(report.startswith(b"%PDF-"))
+
                 with self.assertRaises(urllib.error.HTTPError) as old_route:
                     urllib.request.urlopen(f"{base}/api/records")
                 self.assertEqual(old_route.exception.code, 404)
@@ -198,6 +232,54 @@ class MunicipalQtoTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as escaped:
                     urllib.request.urlopen(bad_request)
                 self.assertEqual(escaped.exception.code, 400)
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+        for name, value in original.items():
+            setattr(app_server, name, value)
+
+    def test_server_converts_vector_pdf_and_preserves_two_hashes(self) -> None:
+        from reportlab.pdfgen import canvas
+
+        original = {name: getattr(app_server, name) for name in ("DATA", "CAD_JOBS", "CAD_INPUTS", "CAD_EXPORTS", "PROJECT_ID", "PROJECT_NAME", "REVIEWER_ID")}
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder) / "data"
+            app_server.DATA = data
+            app_server.CAD_JOBS = data / "cad_jobs"
+            app_server.CAD_INPUTS = data / "cad_inputs"
+            app_server.CAD_EXPORTS = data / "cad_exports"
+            app_server.PROJECT_ID = "TEST-PDF-QTO"
+            app_server.PROJECT_NAME = "测试 PDF 转 DXF"
+            app_server.REVIEWER_ID = None
+            httpd = app_server.ThreadingHTTPServer(("127.0.0.1", 0), app_server.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            base = f"http://127.0.0.1:{httpd.server_address[1]}"
+            try:
+                pdf_path = Path(folder) / "vector.pdf"
+                pdf = canvas.Canvas(str(pdf_path), pagesize=(200, 100))
+                pdf.line(10, 10, 100, 10)
+                pdf.rect(20, 20, 50, 30)
+                pdf.drawString(30, 70, "K0+000")
+                pdf.save()
+                boundary = "----sayelf-cad-qto-pdf"
+                uploaded_body = (
+                    f"--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"vector.pdf\"\r\nContent-Type: application/pdf\r\n\r\n".encode("utf-8")
+                    + pdf_path.read_bytes()
+                    + f"\r\n--{boundary}--\r\n".encode("utf-8")
+                )
+                request = urllib.request.Request(f"{base}/api/cad/files", data=uploaded_body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+                with urllib.request.urlopen(request) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                item = payload["files"][0]
+                self.assertEqual(item["input_format"], "pdf")
+                self.assertEqual(item["conversion_status"], "CONVERTED")
+                self.assertEqual(len(item["original_sha256"]), 64)
+                self.assertEqual(len(item["source_sha256"]), 64)
+                self.assertNotEqual(item["original_sha256"], item["source_sha256"])
+                converted = list((data / "cad_inputs").glob("*.converted.dxf"))
+                self.assertEqual(len(converted), 1)
+                self.assertEqual(__import__("server").inspect_dxf(converted[0])["geometry_inventory"]["entity_count"], 3)
             finally:
                 httpd.shutdown()
                 httpd.server_close()

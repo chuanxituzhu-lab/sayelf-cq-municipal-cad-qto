@@ -13,10 +13,12 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from cad_qto.canonical import canonicalize_dxf, sha256_file
+from cad_qto.conversion import ConversionError, SUPPORTED_INPUT_EXTENSIONS, convert_to_dxf
 from cad_qto.dxf import geometry_inventory, parse_ascii_dxf
+from cad_qto.export import ExportError, export_pdf, export_xlsx
 from cad_qto.job import QtoJobError, run_job
 from cad_qto.review import REVIEW_PROTOCOL_VERSION, ReviewInputError, record_job_review, write_job_atomic
 
@@ -25,6 +27,7 @@ WEB = ROOT / "web"
 DATA = ROOT / "data"
 CAD_JOBS = DATA / "cad_jobs"
 CAD_INPUTS = DATA / "cad_inputs"
+CAD_EXPORTS = DATA / "cad_exports"
 HOST = os.environ.get("MUNICIPAL_QTO_HOST", "127.0.0.1").strip() or "127.0.0.1"
 PORT = int(os.environ.get("MUNICIPAL_QTO_PORT", "8765"))
 PROJECT_ID = os.environ.get("MUNICIPAL_QTO_PROJECT_ID", "CQ-MUNICIPAL-CAD-QTO").strip() or "CQ-MUNICIPAL-CAD-QTO"
@@ -48,9 +51,11 @@ def project_info() -> dict[str, str]:
 def capabilities() -> dict:
     return {
         "server": "municipal-cad-qto",
-        "version": "0.3.0",
-        "input_formats": ["ASCII DXF"],
-        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf"]},
+        "version": "0.4.0",
+        "input_formats": ["ASCII DXF（默认）", "PDF（本地矢量转 DXF）", "DWG（本地转换器转 DXF）"],
+        "file_entry": {"single": True, "multiple": True, "accepted_extensions": [".dxf", ".pdf", ".dwg"], "default_extension": ".dxf"},
+        "conversion": {"local_only": True, "target_format": ".dxf", "pdf_method": "PyMuPDF 矢量图元提取", "dwg_method": "本机 ODA File Converter / ezdxf odafc", "scan_pdf_auto_ocr": False},
+        "exports": [{"format": "xlsx", "label": "Excel 工程量成果"}, {"format": "pdf", "label": "PDF 工程量成果"}],
         "canonical_output": "ASCII DXF（保守实体子集）",
         "supported_entities": ["LINE", "LWPOLYLINE", "TEXT", "MTEXT"],
         "disciplines": ["road", "network", "retaining"],
@@ -95,12 +100,12 @@ def project_paths(values: object) -> list[Path]:
     if isinstance(values, str):
         values = [values]
     if not isinstance(values, list) or not values:
-        raise ValueError("至少需要一个项目内 DXF 文件")
+        raise ValueError("至少需要一个项目内 DXF 文件；PDF/DWG 请先在文件入口本地转换")
     if len(values) > 50:
-        raise ValueError("单次最多录入 50 个 DXF 文件")
+        raise ValueError("单次最多使用 50 个 DXF 文件")
     paths = [project_path(value) for value in values]
     if any(path.suffix.lower() != ".dxf" for path in paths):
-        raise ValueError("当前文件入口只接受 .dxf")
+        raise ValueError("算量核心只接收 DXF；PDF/DWG 必须先通过本地转换入口生成 DXF")
     return paths
 
 
@@ -114,7 +119,7 @@ def path_label(value: str | Path) -> str:
 
 def inspect_dxf(source: Path) -> dict:
     if source.suffix.lower() != ".dxf":
-        raise ValueError("当前工具只接受 .dxf；不要把 PDF/IFC/LandXML 当作 DXF")
+        raise ValueError("图纸检查需要 DXF；PDF/DWG 请先在本地转换为 DXF")
     document = parse_ascii_dxf(source)
     return {
         "status": "PARSED",
@@ -139,7 +144,7 @@ def job_summary(job: dict, result_file: str = "") -> dict:
         "rule_pack_version": calculation.get("rule_pack_version", ""),
         "status": job.get("status", ""),
         "review_status": calculation.get("review_status", ""),
-        "warning_count": len(source.get("warnings", [])) + len(calculation.get("warnings", [])),
+        "warning_count": len(source.get("warnings", [])) + len(source.get("conversion_warnings", [])) + len(calculation.get("warnings", [])),
         "quantity_count": len(calculation.get("quantities", [])),
         "created_at": job.get("created_at", ""),
     }
@@ -162,13 +167,23 @@ def list_input_files() -> list[dict]:
     files: list[dict] = []
     if not CAD_INPUTS.exists():
         return files
-    for source in sorted(CAD_INPUTS.glob("*.dxf"), key=lambda item: item.stat().st_mtime, reverse=True):
+    candidates = [item for item in CAD_INPUTS.iterdir() if item.is_file() and item.suffix.lower() in SUPPORTED_INPUT_EXTENSIONS and not item.name.endswith(".converted.dxf")]
+    for source in sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True):
         try:
+            converted = source if source.suffix.lower() == ".dxf" else source.with_name(f"{source.stem}.converted.dxf")
+            converted_exists = converted.exists() and converted.is_file()
+            source_for_calculation = converted if converted_exists else source
             files.append({
-                "source_file": path_label(source),
+                "source_file": path_label(source_for_calculation),
+                "original_file": path_label(source),
+                "converted_file": path_label(converted) if converted_exists else "",
                 "original_name": source.name.split("-", 1)[-1],
+                "input_format": source.suffix.lower().lstrip("."),
                 "size_bytes": source.stat().st_size,
-                "source_sha256": sha256_file(source),
+                "original_sha256": sha256_file(source),
+                "source_sha256": sha256_file(source_for_calculation) if converted_exists else sha256_file(source),
+                "conversion_status": "NOT_NEEDED" if source.suffix.lower() == ".dxf" else ("CONVERTED" if converted_exists else "FAILED"),
+                "conversion_method": "identity" if source.suffix.lower() == ".dxf" else (("local-pymupdf-vector-extraction" if source.suffix.lower() == ".pdf" else "local-ezdxf-odafc") if converted_exists else "unavailable"),
                 "created_at": datetime.fromtimestamp(source.stat().st_mtime).isoformat(timespec="seconds"),
             })
         except OSError:
@@ -177,7 +192,7 @@ def list_input_files() -> list[dict]:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MunicipalCadQto/0.3"
+    server_version = "MunicipalCadQto/0.4"
 
     def log_message(self, fmt: str, *args) -> None:
         print(fmt % args)
@@ -238,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/"):
             try:
-                self.api_get(parsed.path)
+                self.api_get(parsed.path, parse_qs(parsed.query))
             except (OSError, ValueError, json.JSONDecodeError) as exc:
                 self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
@@ -280,7 +295,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def api_get(self, path: str) -> None:
+    def send_download(self, path: Path, content_type: str, download_name: str) -> None:
+        raw = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def api_get(self, path: str, query: dict[str, list[str]] | None = None) -> None:
         if path in {"/api/bootstrap", "/api/cad/status"}:
             payload = {"project": project_info(), **capabilities()} if path == "/api/bootstrap" else {"project_id": PROJECT_ID, **capabilities()}
             self.send_json(payload)
@@ -290,6 +316,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/cad/files":
             self.send_json({"files": list_input_files(), "data_classification": "PRIVATE_PROJECT_DATA"})
+            return
+        if path.startswith("/api/cad/jobs/") and path.endswith("/export"):
+            job_id = path.split("/")[4]
+            safe_job_id(job_id)
+            result_path = CAD_JOBS / f"{job_id}.json"
+            if not result_path.exists():
+                self.send_json({"error": "算量作业不存在"}, HTTPStatus.NOT_FOUND)
+                return
+            export_format = ((query or {}).get("format") or ["xlsx"])[0].lower()
+            if export_format not in {"xlsx", "pdf"}:
+                self.send_json({"error": "成果格式只支持 xlsx 或 pdf"}, HTTPStatus.BAD_REQUEST)
+                return
+            job = json.loads(result_path.read_text(encoding="utf-8"))
+            CAD_EXPORTS.mkdir(parents=True, exist_ok=True)
+            export_path = CAD_EXPORTS / f"{job_id}.{export_format}"
+            if export_format == "xlsx":
+                export_xlsx(job, export_path)
+                content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            else:
+                export_pdf(job, export_path)
+                content_type = "application/pdf"
+            self.send_download(export_path, content_type, f"{job_id}-cad-qto.{export_format}")
             return
         if path.startswith("/api/cad/jobs/"):
             job_id = path.rsplit("/", 1)[-1]
@@ -303,7 +351,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(json.loads(result_path.read_text(encoding="utf-8")))
             return
         if path == "/api/healthz":
-            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": "0.3.0"})
+            self.send_json({"ok": True, "service": "municipal-cad-qto", "version": "0.4.0"})
             return
         self.send_json({"error": "接口不存在"}, HTTPStatus.NOT_FOUND)
 
@@ -330,6 +378,19 @@ class Handler(BaseHTTPRequestHandler):
             manifest["canonical_file"] = path_label(output)
             self.send_json({"ok": True, "manifest": manifest})
             return
+        if path == "/api/cad/convert":
+            source = project_path(body.get("source_file"))
+            if source.suffix.lower() not in {".pdf", ".dwg", ".dxf"}:
+                raise ConversionError("本地转换只支持 DXF、PDF、DWG")
+            output_value = str(body.get("output_file", "")).strip() or f"data/cad_inputs/{source.stem}.converted.dxf"
+            output = project_path(output_value, must_exist=False)
+            manifest = convert_to_dxf(source, output)
+            inspection = inspect_dxf(output if source.suffix.lower() != ".dxf" else source)
+            manifest["source_file"] = path_label(source)
+            manifest["converted_file"] = path_label(output if source.suffix.lower() != ".dxf" else source)
+            manifest["inspection"] = inspection
+            self.send_json({"ok": True, "manifest": manifest})
+            return
         if path in {"/api/cad/calculate", "/api/cad/retaining"}:
             self.create_cad_jobs(body)
             return
@@ -345,21 +406,51 @@ class Handler(BaseHTTPRequestHandler):
         try:
             for original_name, payload in self.read_uploads():
                 filename = Path(original_name).name
-                if Path(filename).suffix.lower() != ".dxf":
-                    raise ValueError(f"不支持的文件类型：{filename}；当前只接受 .dxf")
+                extension = Path(filename).suffix.lower()
+                if extension not in SUPPORTED_INPUT_EXTENSIONS:
+                    raise ValueError(f"不支持的文件类型：{filename}；仅支持 DXF、PDF、DWG")
                 if not payload:
                     raise ValueError(f"文件为空：{filename}")
                 safe_name = re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]+", "_", Path(filename).stem).strip("._") or "drawing"
-                target = CAD_INPUTS / f"{uuid.uuid4().hex[:10]}-{safe_name}.dxf"
-                target.write_bytes(payload)
-                created_paths.append(target)
-                inspection = inspect_dxf(target)
-                stored.append({"source_file": path_label(target), "original_name": filename, "size_bytes": len(payload), "source_sha256": inspection["source_sha256"], "status": inspection["status"]})
+                token = uuid.uuid4().hex[:10]
+                original_target = CAD_INPUTS / f"{token}-{safe_name}{extension}"
+                original_target.write_bytes(payload)
+                created_paths.append(original_target)
+                converted_target = original_target if extension == ".dxf" else CAD_INPUTS / f"{token}-{safe_name}.converted.dxf"
+                if extension != ".dxf":
+                    created_paths.append(converted_target)
+                conversion = convert_to_dxf(original_target, converted_target if extension != ".dxf" else None)
+                calculation_source = converted_target if extension != ".dxf" else original_target
+                inspection = inspect_dxf(calculation_source)
+                stored.append({
+                    "source_file": path_label(calculation_source),
+                    "original_file": path_label(original_target),
+                    "converted_file": path_label(calculation_source),
+                    "original_name": filename,
+                    "input_format": extension.lstrip("."),
+                    "size_bytes": len(payload),
+                    "original_sha256": sha256_file(original_target),
+                    "source_sha256": inspection["source_sha256"],
+                    "conversion_status": conversion["status"],
+                    "conversion_method": conversion["method"],
+                    "conversion_warnings": conversion.get("warnings", []),
+                    "status": inspection["status"],
+                })
         except Exception:
             for path in created_paths:
                 path.unlink(missing_ok=True)
             raise
         self.send_json({"ok": True, "files": stored, "data_classification": "PRIVATE_PROJECT_DATA"}, HTTPStatus.CREATED)
+
+    def conversion_metadata(self, source: Path) -> dict[str, Any]:
+        if not source.name.endswith(".converted.dxf"):
+            return {"original_file": path_label(source), "original_sha256": sha256_file(source), "converted_file": path_label(source), "conversion_status": "NOT_NEEDED", "conversion_method": "identity", "conversion_warnings": []}
+        stem = source.name[: -len(".converted.dxf")]
+        original = next((source.with_name(f"{stem}{extension}") for extension in (".pdf", ".dwg") if source.with_name(f"{stem}{extension}").exists()), None)
+        if original is None:
+            return {"converted_file": path_label(source), "conversion_status": "CONVERTED", "conversion_method": "local", "conversion_warnings": ["未找到转换前原文件，建议人工检查本地文件留存"]}
+        method = "local-pymupdf-vector-extraction" if original.suffix.lower() == ".pdf" else "local-ezdxf-odafc"
+        return {"original_file": path_label(original), "original_sha256": sha256_file(original), "converted_file": path_label(source), "conversion_status": "CONVERTED", "conversion_method": method, "conversion_warnings": []}
 
     def create_cad_jobs(self, body: dict) -> None:
         source_values = body.get("source_files")
@@ -389,6 +480,8 @@ class Handler(BaseHTTPRequestHandler):
             }, canonical_path=canonical_path)
             result["source"]["source_file"] = path_label(source)
             result["source"]["canonical_file"] = path_label(canonical_path)
+            result["source"].update(self.conversion_metadata(source))
+            result["input_snapshot"]["source_conversion"] = {key: value for key, value in result["source"].items() if key.startswith("original_") or key.startswith("converted_") or key.startswith("conversion_")}
             result_file = CAD_JOBS / f"{job_id}.json"
             write_job_atomic(result_file, result)
             results.append({"job": result, "summary": job_summary(result, path_label(result_file))})
@@ -415,6 +508,7 @@ def main() -> None:
     DATA.mkdir(exist_ok=True)
     CAD_JOBS.mkdir(exist_ok=True)
     CAD_INPUTS.mkdir(exist_ok=True)
+    CAD_EXPORTS.mkdir(exist_ok=True)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"重庆市政 CAD 工程量计算服务运行中：http://{HOST}:{PORT}")
     try:
