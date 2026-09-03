@@ -1,3 +1,5 @@
+const apiBase = String(window.CAD_QTO_API_BASE || "").replace(/\/+$/, "");
+const apiUrl = (url) => `${apiBase}${url}`;
 const state = { capabilities: null, jobs: [], selectedJobId: "", latestJob: null, files: [], selectedFiles: [] };
 
 const sampleRoad = [{
@@ -29,7 +31,7 @@ const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
 
 async function request(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetch(apiUrl(url), options);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "请求失败");
   return payload;
@@ -192,7 +194,7 @@ function renderJob(job, target = "#calculationResult") {
   const candidates = (job.recognition?.candidates || []).map((item) => `${item.layer} → ${(item.candidate_groups || []).join("、")}`).join("；") || "未匹配到专业图层";
   const disciplines = (calculation.disciplines || []).map((item) => ({road: "道路", network: "管网", retaining: "挡护"}[item] || item)).join(" · ");
   const conversion = source.conversion_status && source.conversion_status !== "NOT_NEEDED" ? `<div class="data-box"><span>输入转换</span><b>${esc(source.conversion_status)} · ${esc(source.conversion_method || "local")}</b><small>${esc(source.original_file || "")} · 原图 SHA ${esc(source.original_sha256 || "")}</small></div>` : "";
-  const downloads = `<div class="download-actions"><span>独立成果下载</span><a class="outline" href="/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=xlsx" download>下载 Excel</a><a class="outline" href="/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=pdf" download>下载 PDF</a></div>`;
+  const downloads = `<div class="download-actions"><span>独立成果下载</span><a class="outline" href="${esc(apiUrl(`/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=xlsx`))}" download>下载 Excel</a><a class="outline" href="${esc(apiUrl(`/api/cad/jobs/${encodeURIComponent(job.job_id)}/export?format=pdf`))}" download>下载 PDF</a></div>`;
   $(target).innerHTML = `${downloads}<div class="evidence-grid"><div class="data-box"><span>作业状态</span><b class="status ${statusClass(job.status)}">${esc(job.status)}</b></div><div class="data-box"><span>计算专业</span><b>${esc(disciplines || "未指定")}</b></div><div class="data-box"><span>计算状态</span><b>${esc(calculation.review_status || "待人工审核")}</b></div><div class="data-box"><span>规则包</span><b>${esc(calculation.rule_pack_version)}</b></div><div class="data-box"><span>源图 SHA-256</span><b>${esc(source.source_sha256)}</b></div><div class="data-box"><span>标准化 DXF SHA-256</span><b>${esc(source.canonical_sha256)}</b></div><div class="data-box"><span>识别候选（Hypothesis）</span><b>${esc(candidates)}</b></div>${conversion}</div>${warnings.length ? `<div class="warning-box">告警：${warnings.map((item) => esc(item)).join("；")}</div>` : ""}<div class="quantity-table"><div class="quantity-row quantity-head"><span>编码</span><span>分项</span><span>单位</span><span>数量</span></div>${totals.map((item) => `<div class="quantity-row"><span>${esc(item.item_code)}</span><span>${esc(item.item)}</span><span>${esc(item.unit)}</span><span>${esc(item.quantity)}</span></div>`).join("")}</div><div class="formula-list">${quantities.slice(0, 50).map((item) => `<div class="formula-item">${esc(item.discipline)} / ${esc(item.item_code)}：${esc(item.formula)} = ${esc(item.quantity)} ${esc(item.unit)} · ${esc(item.status)}</div>`).join("")}</div>`;
   if (target === "#calculationResult") { $("#calculationState").textContent = calculation.review_status || job.status; $("#calculationState").className = `state-chip ${statusClass(job.status)}`; }
   if (target === "#reviewDetail") { $("#reviewState").textContent = job.status; $("#reviewState").className = `state-chip ${statusClass(job.status)}`; $("#reviewFormPanel").hidden = ["FACT_CONFIRMED", "REJECTED"].includes(job.status); $("#reviewerId").value = ""; }

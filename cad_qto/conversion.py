@@ -268,7 +268,7 @@ def _dwg_dxf(source: Path, destination: Path) -> dict[str, Any]:
                 if item.is_file() and item.suffix.lower() == ".dxf" and item.stem.casefold() == source.stem.casefold()
             ]
             if len(candidates) != 1:
-                raise ConversionError(f"ODA 转换未生成唯一的 {source.stem}.dxf，未采用不确定输出")
+                raise ConversionError(f"DWG 文件已收到，但 ODA 转换未生成唯一的 {source.stem}.dxf，未采用不确定输出")
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(candidates[0], destination)
     except ConversionError:
@@ -277,7 +277,7 @@ def _dwg_dxf(source: Path, destination: Path) -> dict[str, Any]:
         raise ConversionError(f"本机 DWG→DXF 文件处理失败：{exc}") from exc
 
     if not destination.exists() or destination.stat().st_size == 0:
-        raise ConversionError("本机 DWG 转换器未生成有效 DXF")
+        raise ConversionError("DWG 文件已收到，但本机转换器未生成有效 DXF")
     try:
         parse_ascii_dxf(destination)
     except Exception as exc:

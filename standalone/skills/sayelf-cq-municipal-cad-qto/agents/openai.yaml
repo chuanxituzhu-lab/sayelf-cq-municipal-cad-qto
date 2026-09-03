@@ -1,0 +1,5 @@
+interface:
+  display_name: "重庆市政 CAD 造价算量"
+  short_description: "本地检查、转换、计算并复核市政 CAD 工程量"
+  brand_color: "#0F766E"
+  default_prompt: "Use $sayelf-cq-municipal-cad-qto to inspect a local Chongqing municipal drawing and prepare a reviewable quantity-takeoff draft."

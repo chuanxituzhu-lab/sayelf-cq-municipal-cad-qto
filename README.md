@@ -97,6 +97,21 @@ python -m cad_qto --input fixtures/cq_retaining_demo.json --output result.json
 
 道路、管网、挡护综合算量优先通过 WebUI、HTTP API 或 MCP 工具提交数组参数。
 
+## 独立 HTML 与 Skill
+
+仓库提供两个可单独交付的产物，均只服务本 CAD 造价算量工具：
+
+- `standalone/sayelf-cq-municipal-cad-qto.html`：单文件 WebUI，CSS/JavaScript 已内嵌，可直接用浏览器打开；它仍需本机先运行 `python server.py`，计算和文件处理全部留在 `127.0.0.1:8765`。
+- `standalone/skills/sayelf-cq-municipal-cad-qto/`：独立 Skill，编排本仓库 MCP 工具的检查、转换、计算、人工复核和成果导出流程，可作为 Codex、Claude Code、WorkBuddy/CodeBuddy、千问/百炼、豆包/扣子等宿主的接入材料。
+
+修改 `web/index.html`、`web/style.css` 或 `web/app.js` 后，重新生成单文件 HTML：
+
+```text
+python scripts/build_standalone_html.py
+```
+
+独立 HTML 不包含 ODA 二进制和真实工程资料；DWG 转换仍由本机安装引导配置的 ODA File Converter 完成。构建决策与边界见 [独立 HTML 与 Skill 构建决策记录](docs/独立HTML与Skill构建决策记录-v0.1.md)。
+
 ## MCP / AI 宿主插件
 
 插件目录为 [`plugins/municipal-cad-qto`](plugins/municipal-cad-qto)，只调用同一份 `cad_qto` 核心，不复制业务逻辑。当前统一工具包括：
